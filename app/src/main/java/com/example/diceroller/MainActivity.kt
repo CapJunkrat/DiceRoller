@@ -1,10 +1,14 @@
 package com.example.diceroller
 
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -51,6 +55,7 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
@@ -185,6 +190,34 @@ fun DiceAppWithNavigation() {
     }
 }
 
+fun saveImageToGallery(context: Context, resourceId: Int, fileName: String) {
+    try {
+        val bitmap = BitmapFactory.decodeResource(context.resources, resourceId)
+        val contentValues = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.png")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.WIDTH, bitmap.width)
+            put(MediaStore.Images.Media.HEIGHT, bitmap.height)
+        }
+
+        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+
+        uri?.let {
+            context.contentResolver.openOutputStream(it).use { stream ->
+                if (stream != null) {
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                    Toast.makeText(context, "Saved to Gallery", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } ?: run {
+            Toast.makeText(context, "Failed to save", Toast.LENGTH_SHORT).show()
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        Toast.makeText(context, "Error saving image", Toast.LENGTH_SHORT).show()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
@@ -250,18 +283,11 @@ fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
-            // Placeholder for Alipay QR Code
-            // Replace R.drawable.alipay_qr with your actual resource
-            Box(
-                modifier = Modifier
-                    .size(200.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.LightGray),
-                contentAlignment = Alignment.Center
-            ) {
-                  Image(painter = painterResource(id = R.drawable.alipay_qr), contentDescription = "Alipay QR Code")
-//                 Text("Place alipay_qr.png in res/drawable", textAlign = TextAlign.Center)
-            }
+            
+            QrCodeSection(
+                resourceId = R.drawable.alipay_qr,
+                name = "alipay_qr"
+            )
             
             Spacer(modifier = Modifier.height(32.dp))
 
@@ -272,21 +298,46 @@ fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
-            // Placeholder for WeChat QR Code
-            // Replace R.drawable.wechat_qr with your actual resource
-            Box(
-                modifier = Modifier
-                    .size(200.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.LightGray),
-                contentAlignment = Alignment.Center
-            ) {
-                  Image(painter = painterResource(id = R.drawable.wechat_qr), contentDescription = "WeChat QR Code")
-//                 Text("Place wechat_qr.png in res/drawable", textAlign = TextAlign.Center)
-            }
+            
+            QrCodeSection(
+                resourceId = R.drawable.wechat_qr,
+                name = "wechat_qr"
+            )
             
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+@Composable
+fun QrCodeSection(resourceId: Int, name: String) {
+    val context = LocalContext.current
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(0.8f) // Take 80% of width
+                .aspectRatio(1f) // Keep square aspect ratio
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.White)
+                .clickable {
+                    saveImageToGallery(context, resourceId, name)
+                }
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = resourceId),
+                contentDescription = name,
+                contentScale = ContentScale.Fit, // Ensures the entire image is visible
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Click to save to Gallery",
+            style = MaterialTheme.typography.bodySmall,
+            color = Color.Gray
+        )
     }
 }
 
