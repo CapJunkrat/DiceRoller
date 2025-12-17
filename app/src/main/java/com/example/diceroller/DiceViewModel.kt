@@ -84,7 +84,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             }
             val result = DiceParser.parseAndRoll(formula)
 
-            val animationDuration = 900L 
+            val animationDuration = 500L
             val updateInterval = 60L
             val startTime = System.currentTimeMillis()
             

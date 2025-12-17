@@ -103,8 +103,8 @@ class SoundManager(context: Context) {
             .setAudioAttributes(audioAttributes)
             .build()
 
-        // rollSoundId = soundPool.load(context, R.raw.dice_roll, 1)
-        rollSoundId = 0
+        rollSoundId = soundPool.load(context, R.raw.dice_roll, 1)
+//        rollSoundId = 0
     }
 
     fun playRollSound() {
