@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -37,6 +38,7 @@ private val ALL_CONFIGURABLE_DICE = listOf(4, 6, 8, 10, 12, 20, 100)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToDonate: () -> Unit,
     viewModel: SettingsViewModel = viewModel()
 ) {
     val visibleDice by viewModel.visibleDice.collectAsState()
@@ -138,7 +140,7 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StyleChip(
-                    label = "2D(To be added)",
+                    label = "2D",
                     isSelected = currentStyle == DiceStyle.FLAT_2D,
                     isEnabled = false,
                     onClick = { viewModel.onDiceStyleChanged(DiceStyle.FLAT_2D) },
@@ -151,7 +153,7 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 StyleChip(
-                    label = "3D(To be added)",
+                    label = "3D",
                     isSelected = currentStyle == DiceStyle.REALISTIC_3D,
                     isEnabled = false,
                     onClick = { viewModel.onDiceStyleChanged(DiceStyle.REALISTIC_3D) },
@@ -187,6 +189,35 @@ fun SettingsScreen(
                     viewModel.onCustomDiceVisibilityChanged(isChecked)
                 }
             )
+
+            Divider(modifier = Modifier.padding(vertical = 16.dp))
+            
+            // --- Donate Section ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToDonate() }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "Donate",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = "Donate",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "Support the developer",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
         }
     }
 }
