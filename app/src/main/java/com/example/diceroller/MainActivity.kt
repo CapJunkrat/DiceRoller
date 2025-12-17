@@ -267,7 +267,7 @@ fun DiceDisplay(uiState: DiceUiState) {
         } else if (uiState.selectedDice == DiceType.D8) {
              Modifier.offset(y = (-4).dp) 
         } else if (uiState.selectedDice == DiceType.D10 || uiState.selectedDice == DiceType.D100) {
-             Modifier.offset(y = (-4).dp) // Shift up slightly for D10
+             Modifier.offset(y = (-12).dp) // Shift up slightly for D10
         } else {
             Modifier
         }
@@ -520,12 +520,12 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                     }
                     drawInnerLines(inner)
 
-                    // 4. Highlight
-                    drawHighlight(
-                        offset = Offset(fl + faceSize * 0.1f, ft + faceSize * 0.1f),
-                        size = Size(faceSize * 0.8f, faceSize * 0.2f),
-                        rotation = -5f
-                    )
+//                    // 4. Highlight
+//                    drawHighlight(
+//                        offset = Offset(fl + faceSize * 0.1f, ft + faceSize * 0.1f),
+//                        size = Size(faceSize * 0.8f, faceSize * 0.2f),
+//                        rotation = -5f
+//                    )
                 }
 
                 DiceType.D8 -> {
@@ -589,82 +589,143 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                     }
                     drawInnerLines(inner)
 
-                    // 5. Highlight
-                    drawHighlight(
-                         offset = Offset(cx - radius * 0.3f, cy - radius * 0.6f),
-                         size = Size(radius * 0.6f, radius * 0.3f),
-                         rotation = 0f
-                    )
+//                    // 5. Highlight
+//                    drawHighlight(
+//                         offset = Offset(cx - radius * 0.3f, cy - radius * 0.6f),
+//                         size = Size(radius * 0.6f, radius * 0.3f),
+//                         rotation = 0f
+//                    )
                 }
-                DiceType.D10, DiceType.D100 -> {
-                    val top = Offset(cx, cy - radius)
-                    val bottom = Offset(cx, cy + radius)
-                    val outerLeft = Offset(cx - radius, cy - radius * 0.15f)
-                    val outerRight = Offset(cx + radius, cy - radius * 0.15f)
-                    val midLeft = Offset(cx - radius * 0.55f, cy)
-                    val midRight = Offset(cx + radius * 0.55f, cy)
 
-                    // 1. Base Outline
-                    path.moveTo(top.x, top.y)
-                    path.lineTo(outerLeft.x, outerLeft.y)
-                    path.lineTo(bottom.x, bottom.y)
-                    path.lineTo(outerRight.x, outerRight.y)
-                    path.close()
-                    
-                    drawBase(path)
+                DiceType.D10, DiceType.D100 ->{
 
-                    // 2. Facet Shading
-                    // Left Side
-                    val leftSide = Path().apply {
-                        moveTo(top.x, top.y)
-                        lineTo(outerLeft.x, outerLeft.y)
-                        lineTo(bottom.x, bottom.y)
-                        lineTo(midLeft.x, midLeft.y)
-                        close()
+                        // D10 Geometry (Flattened Bottom Kite Version)
+                        // 调整目标：使中间面(Face 9)下方的两条边更平缓(趋向水平)。
+
+                        // 1. 顶点定义
+                        val top = Offset(cx, cy - radius)
+                        val bottom = Offset(cx, cy + radius)
+
+                        // [关键调整 A] 内部顶点 (Inner Vertices)
+                        // 大幅下移。之前在 -0.05f，现在改到 +0.18f (中心线下方)。
+                        // 下移这个点可以让Face 9的上半部分更长，同时为"变平"下半部分做准备。
+                        val innerY = cy + radius * 0.2f
+                        val innerX = radius * 0.55f // 稍微加宽一点以增强水平感
+                        val innerLeft = Offset(cx - innerX, innerY)
+                        val innerRight = Offset(cx + innerX, innerY)
+
+                        // [关键调整 B] 中心交汇点 (Center Junction)
+                        // 之前在 +0.45f，现在上提至 +0.38f。
+                        // innerY(0.18) 和 centerJunctionY(0.38) 的差值变小了，
+                        // 这使得它们之间的连线角度变得非常平缓（接近水平）。
+                        val centerJunction = Offset(cx, cy + radius * 0.38f)
+
+                        // [外部轮廓配合调整]
+                        // 侧面上端 (Shoulder): 保持在上方，维持"长上边"的视觉效果
+                        val shoulderY = cy - radius * 0.25f
+                        val shoulderXOffset = radius * 0.95f
+                        val shoulderLeft = Offset(cx - shoulderXOffset, shoulderY)
+                        val shoulderRight = Offset(cx + shoulderXOffset, shoulderY)
+
+                        // 侧面下端 (Waist): 必须比 innerY 更低一点，以保证几何逻辑正确
+                        // 之前在 +0.15，现在下移到 +0.28 (对应 Inner 的下移)
+                        // 保持 xOffset 比 shoulder 小，维持"内收/垂直"效果
+                        val waistY = cy + radius * 0.28f
+                        val waistXOffset = radius * 0.88f
+                        val outerLeft = Offset(cx - waistXOffset, waistY)
+                        val outerRight = Offset(cx + waistXOffset, waistY)
+
+                        // 2. Base Outline (外轮廓)
+                        // 形状：长顶 -> 垂直腰 -> 短底
+                        path.moveTo(top.x, top.y)
+                        path.lineTo(shoulderLeft.x, shoulderLeft.y)
+                        path.lineTo(outerLeft.x, outerLeft.y)
+                        path.lineTo(bottom.x, bottom.y)
+                        path.lineTo(outerRight.x, outerRight.y)
+                        path.lineTo(shoulderRight.x, shoulderRight.y)
+                        path.close()
+                        drawBase(path)
+
+                        // 3. 绘制切面
+
+                        // --- (A) 中间主面 (Face 9) ---
+                        // 现在的特征：上半部分很长，下半部分的V字收口非常平缓(钝角)
+                        val centerFace = Path().apply {
+                            moveTo(top.x, top.y)
+                            lineTo(innerRight.x, innerRight.y)
+                            lineTo(centerJunction.x, centerJunction.y)
+                            lineTo(innerLeft.x, innerLeft.y)
+                            close()
+                        }
+                        drawPath(centerFace, color = Color.White.copy(alpha = 0.2f))
+
+                        // --- (B) 左上侧面 (Face 5) ---
+                        val leftUpperFace = Path().apply {
+                            moveTo(top.x, top.y)
+                            lineTo(shoulderLeft.x, shoulderLeft.y)
+                            lineTo(outerLeft.x, outerLeft.y)
+                            lineTo(innerLeft.x, innerLeft.y)
+                            close()
+                        }
+                        drawPath(leftUpperFace, color = Color.Black.copy(alpha = 0.15f))
+
+                        // --- (C) 右上侧面 (Face 1) ---
+                        val rightUpperFace = Path().apply {
+                            moveTo(top.x, top.y)
+                            lineTo(shoulderRight.x, shoulderRight.y)
+                            lineTo(outerRight.x, outerRight.y)
+                            lineTo(innerRight.x, innerRight.y)
+                            close()
+                        }
+                        drawPath(rightUpperFace, color = Color.Black.copy(alpha = 0.25f))
+
+                        // --- (D) 左下底面 (Face 2) ---
+                        val leftBottomFace = Path().apply {
+                            moveTo(centerJunction.x, centerJunction.y)
+                            lineTo(innerLeft.x, innerLeft.y)
+                            lineTo(outerLeft.x, outerLeft.y)
+                            lineTo(bottom.x, bottom.y)
+                            close()
+                        }
+                        drawPath(leftBottomFace, color = Color.Black.copy(alpha = 0.05f))
+
+                        // --- (E) 右下底面 (Face 6) ---
+                        val rightBottomFace = Path().apply {
+                            moveTo(centerJunction.x, centerJunction.y)
+                            lineTo(innerRight.x, innerRight.y)
+                            lineTo(outerRight.x, outerRight.y)
+                            lineTo(bottom.x, bottom.y)
+                            close()
+                        }
+                        drawPath(rightBottomFace, color = Color.Black.copy(alpha = 0.3f))
+
+                        // 4. 棱线
+                        val innerLines = Path().apply {
+                            // Face 9 轮廓
+                            moveTo(top.x, top.y); lineTo(innerLeft.x, innerLeft.y)
+                            moveTo(top.x, top.y); lineTo(innerRight.x, innerRight.y)
+
+                            // 这里的连线现在非常平缓
+                            moveTo(innerLeft.x, innerLeft.y); lineTo(centerJunction.x, centerJunction.y)
+                            moveTo(innerRight.x, innerRight.y); lineTo(centerJunction.x, centerJunction.y)
+
+                            // 侧面横线 (Inner -> Waist)
+                            moveTo(innerLeft.x, innerLeft.y); lineTo(outerLeft.x, outerLeft.y)
+                            moveTo(innerRight.x, innerRight.y); lineTo(outerRight.x, outerRight.y)
+
+                            // 脊柱
+                            moveTo(centerJunction.x, centerJunction.y); lineTo(bottom.x, bottom.y)
+                        }
+                        drawInnerLines(innerLines)
+
+//                        // 5. Highlight (高光)
+//                        drawHighlight(
+//                            offset = Offset(cx - radius * 0.2f, cy - radius * 0.3f), // 位置随面下移略微调整
+//                            size = Size(radius * 0.35f, radius * 0.2f),
+//                            rotation = -35f
+//                        )
                     }
-                    drawPath(leftSide, color = Color.Black.copy(alpha = 0.1f))
-                    
-                    // Right Side
-                    val rightSide = Path().apply {
-                        moveTo(top.x, top.y)
-                        lineTo(outerRight.x, outerRight.y)
-                        lineTo(bottom.x, bottom.y)
-                        lineTo(midRight.x, midRight.y)
-                        close()
-                    }
-                    drawPath(rightSide, color = Color.Black.copy(alpha = 0.2f))
 
-                    // Front Face
-                    val frontFace = Path().apply {
-                        moveTo(top.x, top.y)
-                        lineTo(midRight.x, midRight.y)
-                        lineTo(bottom.x, bottom.y)
-                        lineTo(midLeft.x, midLeft.y)
-                        close()
-                    }
-                    drawPath(frontFace, color = Color.White.copy(alpha = 0.15f))
-
-                    // 3. Inner Lines
-                    val inner = Path().apply {
-                        // Outline of front face
-                        moveTo(top.x, top.y); lineTo(midLeft.x, midLeft.y)
-                        moveTo(midLeft.x, midLeft.y); lineTo(bottom.x, bottom.y)
-                        moveTo(bottom.x, bottom.y); lineTo(midRight.x, midRight.y)
-                        moveTo(midRight.x, midRight.y); lineTo(top.x, top.y)
-                        
-                        // Side ridges
-                        moveTo(midLeft.x, midLeft.y); lineTo(outerLeft.x, outerLeft.y)
-                        moveTo(midRight.x, midRight.y); lineTo(outerRight.x, outerRight.y)
-                    }
-                    drawInnerLines(inner)
-
-                    // 4. Highlight
-                    drawHighlight(
-                         offset = Offset(cx - radius * 0.3f, cy - radius * 0.5f),
-                         size = Size(radius * 0.6f, radius * 0.3f),
-                         rotation = 0f
-                    )
-                }
                 DiceType.D12 -> {
                     for (i in 0 until 5) {
                         val theta = -Math.PI / 2 + i * 2 * Math.PI / 5
@@ -699,13 +760,13 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                 }
             }
             
-            if (type != DiceType.D6 && type != DiceType.CUSTOM && type != DiceType.D4) {
-                 drawHighlight(
-                    offset = Offset(cx - radius * 0.5f, cy - radius * 0.7f),
-                    size = Size(radius * 0.6f, radius * 0.3f),
-                    rotation = -30f
-                )
-            }
+//            if (type != DiceType.D6 && type != DiceType.CUSTOM && type != DiceType.D4) {
+//                 drawHighlight(
+//                    offset = Offset(cx - radius * 0.5f, cy - radius * 0.7f),
+//                    size = Size(radius * 0.6f, radius * 0.3f),
+//                    rotation = -30f
+//                )
+//            }
             return@Canvas
         }
 
