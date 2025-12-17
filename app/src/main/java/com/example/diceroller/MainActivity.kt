@@ -231,7 +231,7 @@ fun DiceDisplay(uiState: DiceUiState) {
         DiceType.D8 -> CartoonColors.Green
         DiceType.D10 -> CartoonColors.Purple
         DiceType.D12 -> CartoonColors.Orange
-        DiceType.D20 -> CartoonColors.Yellow
+        DiceType.D20 -> CartoonColors.Pink
         DiceType.D100 -> CartoonColors.Pink
         DiceType.CUSTOM -> Color.LightGray
     }
@@ -262,12 +262,16 @@ fun DiceDisplay(uiState: DiceUiState) {
         // D6 needs to be shifted Right and Down (because Right Face is main)
         val textOffset = if (uiState.selectedDice == DiceType.D4) {
             Modifier.offset(x = 24.dp, y = 16.dp)
-        } else if (uiState.selectedDice == DiceType.D6 || uiState.selectedDice == DiceType.CUSTOM) {
+        } else if (uiState.selectedDice == DiceType.D6) {
              Modifier.offset(x = (-12).dp, y = 12.dp)
         } else if (uiState.selectedDice == DiceType.D8) {
              Modifier.offset(y = (-4).dp) 
-        } else if (uiState.selectedDice == DiceType.D10 || uiState.selectedDice == DiceType.D100) {
+        } else if (uiState.selectedDice == DiceType.D10 ) {
              Modifier.offset(y = (-12).dp) // Shift up slightly for D10
+        } else if (uiState.selectedDice == DiceType.D100) {
+            Modifier.offset(y = (0).dp)
+        } else if (uiState.selectedDice == DiceType.CUSTOM) {
+            Modifier.offset(y = (0).dp)
         } else {
             Modifier
         }
@@ -466,7 +470,7 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                     }
                     drawPath(highlightPath, color = Color.White.copy(alpha = 0.3f))
                 }
-                DiceType.D6, DiceType.CUSTOM -> {
+                DiceType.D6 -> {
                     val faceSize = radius * 1.3f
                     val depth = radius * 0.5f
                     
@@ -597,7 +601,7 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
 //                    )
                 }
 
-                DiceType.D10, DiceType.D100 ->{
+                DiceType.D10->{
 
                         // D10 Geometry (Flattened Bottom Kite Version)
                         // 调整目标：使中间面(Face 9)下方的两条边更平缓(趋向水平)。
@@ -727,39 +731,466 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                     }
 
                 DiceType.D12 -> {
+                    // D12 Geometry (Dodecahedron)
+                    // 结构：中间一个正五边形，周围环绕5个五边形。
+                    // 外轮廓：十边形 (Decagon)
+
+                    // 1. 定义几何参数
+                    val innerRadius = radius * 0.6f // 中间五边形的大小
+                    val outerRadius = radius         // 外轮廓半径
+
+                    // 角度配置：D12在这个视角下，中间五边形的顶点是朝上的 (-90度)
+                    val startAngle = -90f
+                    val segmentAngle = 72f // 360 / 5
+
+                    // 2. 计算关键顶点
+                    // innerPoints: 中间五边形的5个顶点
+                    val innerPoints = (0 until 5).map { i ->
+                        val theta = (startAngle + i * segmentAngle) * (Math.PI / 180f)
+                        Offset(
+                            cx + innerRadius * cos(theta).toFloat(),
+                            cy + innerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    // outerSpokePoints: 从中心向外辐射的棱线的终点 (与innerPoints角度相同)
+                    val outerSpokePoints = (0 until 5).map { i ->
+                        val theta = (startAngle + i * segmentAngle) * (Math.PI / 180f)
+                        Offset(
+                            cx + outerRadius * cos(theta).toFloat(),
+                            cy + outerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    // outerMidPoints: 外轮廓上位于两个辐射点中间的点 (构成十边形的凹凸感)
+                    val outerMidPoints = (0 until 5).map { i ->
+                        val theta = (startAngle + segmentAngle/2 + i * segmentAngle) * (Math.PI / 180f)
+                        Offset(
+                            cx + outerRadius * cos(theta).toFloat(),
+                            cy + outerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    // 3. 绘制外轮廓 (Base Outline - 十边形)
+                    // 顺序: Spoke0 -> Mid0 -> Spoke1 -> Mid1 ...
+                    path.moveTo(outerSpokePoints[0].x, outerSpokePoints[0].y)
                     for (i in 0 until 5) {
-                        val theta = -Math.PI / 2 + i * 2 * Math.PI / 5
-                        val x = cx + radius * cos(theta).toFloat()
-                        val y = cy + radius * sin(theta).toFloat()
-                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                        path.lineTo(outerMidPoints[i].x, outerMidPoints[i].y)
+                        val nextIndex = (i + 1) % 5
+                        path.lineTo(outerSpokePoints[nextIndex].x, outerSpokePoints[nextIndex].y)
                     }
                     path.close()
                     drawBase(path)
-                    val inner = Path().apply {
+
+                    // 4. 绘制切面 (Faces) 并上色
+
+                    // --- (A) 中间面 (Center Face "12") ---
+                    val centerPath = Path().apply {
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        for (i in 1 until 5) lineTo(innerPoints[i].x, innerPoints[i].y)
+                        close()
+                    }
+                    // 中间面通常颜色鲜艳
+                    drawPath(centerPath, color = Color.White.copy(alpha = 0.05f)) // 这里的Alpha叠加在底色上
+
+                    // --- (B) 周围的5个面 ---
+                    // 每个面由: inner[i], outerSpoke[i], outerMid[i], outerSpoke[next], inner[next] 组成
+
+                    // Face "8" (右上, i=0)
+                    // 对应图中右上角
+                    val face0 = Path().apply {
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        lineTo(outerSpokePoints[0].x, outerSpokePoints[0].y)
+                        lineTo(outerMidPoints[0].x, outerMidPoints[0].y)
+                        lineTo(outerSpokePoints[1].x, outerSpokePoints[1].y)
+                        lineTo(innerPoints[1].x, innerPoints[1].y)
+                        close()
+                    }
+                    drawPath(face0, color = Color.Black.copy(alpha = 0.1f))
+
+                    // Face "7" (右方, i=1)
+                    val face1 = Path().apply {
+                        moveTo(innerPoints[1].x, innerPoints[1].y)
+                        lineTo(outerSpokePoints[1].x, outerSpokePoints[1].y)
+                        lineTo(outerMidPoints[1].x, outerMidPoints[1].y)
+                        lineTo(outerSpokePoints[2].x, outerSpokePoints[2].y)
+                        lineTo(innerPoints[2].x, innerPoints[2].y)
+                        close()
+                    }
+                    drawPath(face1, color = Color.Black.copy(alpha = 0.25f))
+
+                    // Face "6" (下方, i=2) - 阴影最重
+                    val face2 = Path().apply {
+                        moveTo(innerPoints[2].x, innerPoints[2].y)
+                        lineTo(outerSpokePoints[2].x, outerSpokePoints[2].y)
+                        lineTo(outerMidPoints[2].x, outerMidPoints[2].y)
+                        lineTo(outerSpokePoints[3].x, outerSpokePoints[3].y)
+                        lineTo(innerPoints[3].x, innerPoints[3].y)
+                        close()
+                    }
+                    drawPath(face2, color = Color.Black.copy(alpha = 0.4f))
+
+                    // Face "11" (左方, i=3)
+                    val face3 = Path().apply {
+                        moveTo(innerPoints[3].x, innerPoints[3].y)
+                        lineTo(outerSpokePoints[3].x, outerSpokePoints[3].y)
+                        lineTo(outerMidPoints[3].x, outerMidPoints[3].y)
+                        lineTo(outerSpokePoints[4].x, outerSpokePoints[4].y)
+                        lineTo(innerPoints[4].x, innerPoints[4].y)
+                        close()
+                    }
+                    drawPath(face3, color = Color.Black.copy(alpha = 0.25f))
+
+                    // Face "3" (左上, i=4) - 受光面，比较亮
+                    val face4 = Path().apply {
+                        moveTo(innerPoints[4].x, innerPoints[4].y)
+                        lineTo(outerSpokePoints[4].x, outerSpokePoints[4].y)
+                        lineTo(outerMidPoints[4].x, outerMidPoints[4].y)
+                        lineTo(outerSpokePoints[0].x, outerSpokePoints[0].y) // 回到起点Spoke
+                        lineTo(innerPoints[0].x, innerPoints[0].y)
+                        close()
+                    }
+                    drawPath(face4, color = Color.White.copy(alpha = 0.15f))
+
+                    // 5. 绘制棱线 (Inner Lines)
+                    val innerLines = Path().apply {
+                        // 中间五边形的轮廓
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        for (i in 1 until 5) lineTo(innerPoints[i].x, innerPoints[i].y)
+                        close()
+
+                        // 辐射线 (Spokes): 连接中间顶点和外部Spoke顶点
                         for (i in 0 until 5) {
-                            val theta = -Math.PI / 2 + i * 2 * Math.PI / 5
-                            val x = cx + radius * cos(theta).toFloat()
-                            val y = cy + radius * sin(theta).toFloat()
-                            innerPath.moveTo(cx, cy); innerPath.lineTo(x, y)
+                            moveTo(innerPoints[i].x, innerPoints[i].y)
+                            lineTo(outerSpokePoints[i].x, outerSpokePoints[i].y)
                         }
                     }
-                    drawInnerLines(inner)
+                    drawInnerLines(innerLines)
                 }
                 DiceType.D20 -> {
-                    for (i in 0 until 6) {
-                        val theta = -Math.PI / 2 + i * 2 * Math.PI / 6
-                        val x = cx + radius * cos(theta).toFloat()
-                        val y = cy + radius * sin(theta).toFloat()
-                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    // D20 Geometry (Icosahedron)
+                    // 视觉特征：外轮廓为六边形，中间是一个倒三角核心(包含主面20)，
+                    // 所有的线连接方式构成了经典的D20网格。
+
+                    // 1. 定义几何参数
+                    // innerRadius: 内部核心三角形的大小 (通常约为半径的 55%)
+                    val innerRadius = radius * 0.68f
+                    val outerRadius = radius
+
+                    // 2. 计算顶点坐标
+                    // Outer Hexagon Points (0:Top, 1:TR, 2:BR, 3:Bottom, 4:BL, 5:TL)
+                    // 角度从 -90度 (正上方) 开始，每 60度 一个点
+                    val outerPoints = (0 until 6).map { i ->
+                        val theta = (-90 + i * 60) * (Math.PI / 180f)
+                        Offset(
+                            cx + outerRadius * cos(theta).toFloat(),
+                            cy + outerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    // Inner Triangle Points (0:Top, 1:BottomRight, 2:BottomLeft)
+                    // 对应外圈的 0, 2, 4 号点的角度，但半径较小
+                    val innerPoints = listOf(0, 2, 4).map { i ->
+                        val theta = (-90 + i * 60) * (Math.PI / 180f)
+                        Offset(
+                            cx + innerRadius * cos(theta).toFloat(),
+                            cy + innerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    // 3. 绘制外轮廓 (Base Outline - Hexagon)
+                    path.moveTo(outerPoints[0].x, outerPoints[0].y)
+                    for (i in 1 until 6) {
+                        path.lineTo(outerPoints[i].x, outerPoints[i].y)
                     }
                     path.close()
                     drawBase(path)
-                    val v = (0 until 6).map { i -> val theta = -Math.PI / 2 + i * 2 * Math.PI / 6; Offset(cx + radius * cos(theta).toFloat(), cy + radius * sin(theta).toFloat()) }
-                    val inner = Path().apply { moveTo(v[0].x, v[0].y); lineTo(v[2].x, v[2].y); lineTo(v[4].x, v[4].y); close() }
-                    drawInnerLines(inner)
+
+                    // 4. 绘制切面 (Faces) 以增加立体感 (可选，模拟图中的明暗)
+
+                    // Face "20" (中间正三角)
+                    val centerFace = Path().apply {
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        lineTo(innerPoints[1].x, innerPoints[1].y)
+                        lineTo(innerPoints[2].x, innerPoints[2].y)
+                        close()
+                    }
+                    // 中间面通常较亮
+                    drawPath(centerFace, color = Color.White.copy(alpha = 0.15f))
+
+                    // Face "8" (正下方倒三角)
+                    val bottomFace = Path().apply {
+                        moveTo(innerPoints[1].x, innerPoints[1].y)
+                        lineTo(innerPoints[2].x, innerPoints[2].y)
+                        lineTo(outerPoints[3].x, outerPoints[3].y)
+                        close()
+                    }
+                    drawPath(bottomFace, color = Color.White.copy(alpha = 0.15f))
+
+                    // Face "14" (右侧)
+                    val rightFace = Path().apply {
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        lineTo(innerPoints[1].x, innerPoints[1].y)
+                        lineTo(outerPoints[1].x, outerPoints[1].y)
+                        close()
+                    }
+                    drawPath(rightFace, color = Color.White.copy(alpha = 0.15f))
+
+                    // Face "2" (左侧)
+                    val leftFace = Path().apply {
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        lineTo(innerPoints[2].x, innerPoints[2].y)
+                        lineTo(outerPoints[5].x, outerPoints[5].y)
+                        close()
+                    }
+                    drawPath(leftFace, color = Color.White.copy(alpha = 0.15f))
+
+                    // 5. 绘制棱线 (Inner Lines)
+                    val innerLines = Path().apply {
+                        // (A) 中间三角形 (Face 20 轮廓)
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        lineTo(innerPoints[1].x, innerPoints[1].y)
+                        lineTo(innerPoints[2].x, innerPoints[2].y)
+                        lineTo(innerPoints[0].x, innerPoints[0].y)
+
+                        // (B) 顶部连接线
+                        // InnerTop -> OuterTop (分割面 18 和 4)
+                        moveTo(innerPoints[0].x, innerPoints[0].y); lineTo(outerPoints[0].x, outerPoints[0].y)
+                        // InnerTop -> OuterTR (面 4 的边界)
+                        moveTo(innerPoints[0].x, innerPoints[0].y); lineTo(outerPoints[1].x, outerPoints[1].y)
+                        // InnerTop -> OuterTL (面 18 的边界)
+                        moveTo(innerPoints[0].x, innerPoints[0].y); lineTo(outerPoints[5].x, outerPoints[5].y)
+
+                        // (C) 右下连接线
+                        // InnerBR -> OuterTR (面 14 的边界)
+                        moveTo(innerPoints[1].x, innerPoints[1].y); lineTo(outerPoints[1].x, outerPoints[1].y)
+                        // InnerBR -> OuterBR (分割面 ? 和 16)
+                        moveTo(innerPoints[1].x, innerPoints[1].y); lineTo(outerPoints[2].x, outerPoints[2].y)
+                        // InnerBR -> OuterBottom (面 8 的边界)
+                        moveTo(innerPoints[1].x, innerPoints[1].y); lineTo(outerPoints[3].x, outerPoints[3].y)
+
+                        // (D) 左下连接线
+                        // InnerBL -> OuterBottom (面 8 的边界)
+                        moveTo(innerPoints[2].x, innerPoints[2].y); lineTo(outerPoints[3].x, outerPoints[3].y)
+                        // InnerBL -> OuterBL (分割面 10 和 ?)
+                        moveTo(innerPoints[2].x, innerPoints[2].y); lineTo(outerPoints[4].x, outerPoints[4].y)
+                        // InnerBL -> OuterTL (面 2 的边界)
+                        moveTo(innerPoints[2].x, innerPoints[2].y); lineTo(outerPoints[5].x, outerPoints[5].y)
+                    }
+                    drawInnerLines(innerLines)
+                }
+                DiceType.D100 -> {
+                    // D100 (Zocchihedron)
+                    // 视觉特征：看起来像一个高尔夫球或圆形宝石。
+                    // 结构：外轮廓是一个近似圆形的24边形，边缘有一圈棱面，中间是一个大的平坦区域。
+
+                    // 1. 定义几何参数
+                    val segments = 24 // 分段数，越多越像圆，24段足以表现棱角感
+                    val innerRadius = radius * 0.78f // 中间数字区域的大小 (留出边缘做棱面)
+                    val outerRadius = radius
+
+                    // 2. 计算顶点
+                    // 这种多面体没有绝对的"上下"，我们用均匀分布的点来模拟
+                    val outerPoints = (0 until segments).map { i ->
+                        val theta = (-Math.PI / 2 + i * 2 * Math.PI / segments)
+                        Offset(
+                            cx + outerRadius * cos(theta).toFloat(),
+                            cy + outerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    val innerPoints = (0 until segments).map { i ->
+                        val theta = (-Math.PI / 2 + i * 2 * Math.PI / segments)
+                        Offset(
+                            cx + innerRadius * cos(theta).toFloat(),
+                            cy + innerRadius * sin(theta).toFloat()
+                        )
+                    }
+
+                    // 3. 绘制底座 (Base Outline)
+                    // 连接所有外部点形成一个24边形
+                    path.moveTo(outerPoints[0].x, outerPoints[0].y)
+                    for (i in 1 until segments) {
+                        path.lineTo(outerPoints[i].x, outerPoints[i].y)
+                    }
+                    path.close()
+                    drawBase(path)
+
+                    // 4. 绘制阴影 (模拟球体的光照)
+
+                    // (A) 底部边缘阴影 (模拟球体下方的暗面)
+                    // 选取下半部分的棱面 (大约是 segments 的 1/3 到 2/3 处)
+                    val bottomShadow = Path().apply {
+                        val startIdx = (segments * 0.35).toInt()
+                        val endIdx = (segments * 0.65).toInt()
+
+                        // 外圈弧线
+                        moveTo(outerPoints[startIdx].x, outerPoints[startIdx].y)
+                        for (i in startIdx + 1..endIdx) lineTo(outerPoints[i].x, outerPoints[i].y)
+
+                        // 内圈弧线 (反向连接)
+                        lineTo(innerPoints[endIdx].x, innerPoints[endIdx].y)
+                        for (i in endIdx - 1 downTo startIdx) lineTo(innerPoints[i].x, innerPoints[i].y)
+
+                        close()
+                    }
+                    // 最深的阴影
+                    drawPath(bottomShadow, color = Color.Black.copy(alpha = 0.3f))
+
+                    // (B) 侧边阴影 (过渡区域)
+                    // 左下和右下的过渡区域
+                    val sideShadowLeft = Path().apply {
+                        val startIdx = (segments * 0.25).toInt()
+                        val endIdx = (segments * 0.35).toInt()
+                        moveTo(outerPoints[startIdx].x, outerPoints[startIdx].y)
+                        for (i in startIdx + 1..endIdx) lineTo(outerPoints[i].x, outerPoints[i].y)
+                        lineTo(innerPoints[endIdx].x, innerPoints[endIdx].y)
+                        for (i in endIdx - 1 downTo startIdx) lineTo(innerPoints[i].x, innerPoints[i].y)
+                        close()
+                    }
+                    val sideShadowRight = Path().apply {
+                        val startIdx = (segments * 0.65).toInt()
+                        val endIdx = (segments * 0.75).toInt()
+                        moveTo(outerPoints[startIdx].x, outerPoints[startIdx].y)
+                        for (i in startIdx + 1..endIdx) lineTo(outerPoints[i].x, outerPoints[i].y)
+                        lineTo(innerPoints[endIdx].x, innerPoints[endIdx].y)
+                        for (i in endIdx - 1 downTo startIdx) lineTo(innerPoints[i].x, innerPoints[i].y)
+                        close()
+                    }
+                    // 中等阴影
+                    drawPath(sideShadowLeft, color = Color.Black.copy(alpha = 0.15f))
+                    drawPath(sideShadowRight, color = Color.Black.copy(alpha = 0.15f))
+
+                    // 5. 绘制棱线 (Inner Lines)
+                    val innerLines = Path().apply {
+                        // (A) 中间圆环 (Inner Circle)
+                        moveTo(innerPoints[0].x, innerPoints[0].y)
+                        for (i in 1 until segments) lineTo(innerPoints[i].x, innerPoints[i].y)
+                        close()
+
+                        // (B) 辐射线 (Spokes) - 也就是边缘的棱面
+                        // 连接每一个内点和外点
+                        for (i in 0 until segments) {
+                            moveTo(innerPoints[i].x, innerPoints[i].y)
+                            lineTo(outerPoints[i].x, outerPoints[i].y)
+                        }
+                    }
+                    drawInnerLines(innerLines)
+                }
+                DiceType.CUSTOM -> {
+                    // Custom Dice (The "Wildcard" or "Magic" Dice)
+                    // 视觉特征：8角星 (Octagram)，看起来像一个魔法阵或通用标记。
+                    // 这种形状中心宽阔，适合显示较长的公式结果，同时边缘锐利，符合整套UI的风格。
+
+                    // 1. 定义几何参数
+                    val points = 8 // 8个尖角
+                    val outerRadius = radius
+                    val innerRadius = radius * 0.75f // 内部半径设大一点，让中心区域"胖"一点，方便显示数字
+
+                    // 2. 计算顶点 (一共 16 个点：8个外尖角，8个内凹角)
+                    // 这种画法是"一外一内"交替连接
+                    val vertices = (0 until points * 2).map { i ->
+                        val isOuter = i % 2 == 0
+                        val r = if (isOuter) outerRadius else innerRadius
+                        // 每一个点旋转的角度 (360度 / 16)
+                        val angleStep = 2 * Math.PI / (points * 2)
+                        // 起始角度 -90度，让第一个尖角朝正上方
+                        val theta = -Math.PI / 2 + i * angleStep
+
+                        Offset(
+                            cx + r * cos(theta).toFloat(),
+                            cy + r * sin(theta).toFloat()
+                        )
+                    }
+
+                    // 3. 绘制外轮廓 (Base Outline)
+                    path.moveTo(vertices[0].x, vertices[0].y)
+                    for (i in 1 until vertices.size) {
+                        path.lineTo(vertices[i].x, vertices[i].y)
+                    }
+                    path.close()
+                    drawBase(path) // 绘制你的蓝色底色
+
+                    // 4. 绘制切面阴影 (Faceted Shading)
+                    // 这里的逻辑是：把星星切成 8 个“菱形”区域，或者 16 个小三角形。
+                    // 为了产生类似宝石的立体感，我们交替绘制深浅阴影。
+
+                    // 循环绘制 8 个扇区
+                    for (i in 0 until points) {
+                        // 每个扇区由3个点组成：中心，外尖角(2*i)，内凹角(2*i+1) 和 下一个内凹角
+                        // 这里我们简单一点，画成从中心向外辐射的三角形切面
+
+                        // 切面 A: 中心 -> 外尖角 -> 下一个内凹角
+                        val vertexIndex = i * 2
+                        val nextInnerIndex = (vertexIndex + 1) % vertices.size
+
+                        val facetA = Path().apply {
+                            moveTo(cx, cy)
+                            lineTo(vertices[vertexIndex].x, vertices[vertexIndex].y)
+                            lineTo(vertices[nextInnerIndex].x, vertices[nextInnerIndex].y)
+                            close()
+                        }
+
+                        // 切面 B: 中心 -> 上一个内凹角 -> 外尖角
+                        val prevInnerIndex = (vertexIndex - 1 + vertices.size) % vertices.size
+                        val facetB = Path().apply {
+                            moveTo(cx, cy)
+                            lineTo(vertices[prevInnerIndex].x, vertices[prevInnerIndex].y)
+                            lineTo(vertices[vertexIndex].x, vertices[vertexIndex].y)
+                            close()
+                        }
+
+                        // 上色逻辑：利用 i 的奇偶性或者位置来模拟光源
+                        // 假设光源在左上，那么右下方的面更黑
+
+                        // 基础阴影浓度
+                        var alphaA = 0.05f
+                        var alphaB = 0.2f
+
+                        // 根据角度加深阴影 (下方的面更黑)
+                        if (i in 3..5) { // 底部区域 (3,4,5 号角)
+                            alphaA += 0.2f
+                            alphaB += 0.2f
+                        } else if (i == 2 || i == 6) { // 侧面
+                            alphaA += 0.1f
+                            alphaB += 0.1f
+                        }
+
+                        // 绘制阴影
+                        drawPath(facetA, color = Color.Black.copy(alpha = alphaA))
+                        drawPath(facetB, color = Color.Black.copy(alpha = alphaB))
+                    }
+
+                    // 5. 绘制棱线 (Inner Lines - 银色金属感)
+                    val innerLines = Path().apply {
+                        // (A) 辐射线：从中心连接到每一个内凹角 (Valley)
+                        // 这样会让星星看起来像是由 8 个菱形拼成的
+                        for (i in 1 until vertices.size step 2) {
+                            moveTo(cx, cy)
+                            lineTo(vertices[i].x, vertices[i].y)
+                        }
+
+                        // (B) 脊柱线：从中心连接到每一个外尖角 (Tip) - 可选
+                        // 如果加上这行，立体感更强（像折纸）；不加则中间区域更平坦（适合放文字）。
+                        // 建议加上，但用细一点的线，或者这里我把它画出来：
+                        for (i in 0 until vertices.size step 2) {
+                            moveTo(cx, cy)
+                            lineTo(vertices[i].x, vertices[i].y)
+                        }
+                    }
+                    drawInnerLines(innerLines)
+
+                    // 6. (可选) 中间加一个淡淡的高光圆，强调这里是"显示结果"的区域
+                    /*
+                    drawHighlight(
+                        offset = Offset(cx, cy),
+                        size = Size(innerRadius, innerRadius),
+                        rotation = 0f
+                    )
+                    */
                 }
             }
-            
+
 //            if (type != DiceType.D6 && type != DiceType.CUSTOM && type != DiceType.D4) {
 //                 drawHighlight(
 //                    offset = Offset(cx - radius * 0.5f, cy - radius * 0.7f),
