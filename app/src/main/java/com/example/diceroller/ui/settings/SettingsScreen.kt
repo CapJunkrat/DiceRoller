@@ -138,8 +138,9 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 StyleChip(
-                    label = "2D",
+                    label = "2D(To be added)",
                     isSelected = currentStyle == DiceStyle.FLAT_2D,
+                    isEnabled = false,
                     onClick = { viewModel.onDiceStyleChanged(DiceStyle.FLAT_2D) },
                     modifier = Modifier.weight(1f)
                 )
@@ -150,8 +151,9 @@ fun SettingsScreen(
                     modifier = Modifier.weight(1f)
                 )
                 StyleChip(
-                    label = "3D",
+                    label = "3D(To be added)",
                     isSelected = currentStyle == DiceStyle.REALISTIC_3D,
+                    isEnabled = false,
                     onClick = { viewModel.onDiceStyleChanged(DiceStyle.REALISTIC_3D) },
                     modifier = Modifier.weight(1f)
                 )
@@ -193,19 +195,27 @@ fun SettingsScreen(
 private fun StyleChip(
     label: String,
     isSelected: Boolean,
+    isEnabled: Boolean = true,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val backgroundColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
-    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+    val backgroundColor = when {
+        !isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        isSelected -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val contentColor = when {
+        !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+        isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
 
     Box(
         modifier = modifier
             .height(48.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
-            .clickable(onClick = onClick),
+            .then(if (isEnabled) Modifier.clickable(onClick = onClick) else Modifier),
         contentAlignment = Alignment.Center
     ) {
         Text(
