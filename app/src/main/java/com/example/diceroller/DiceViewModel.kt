@@ -59,7 +59,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     private var rollJob: Job? = null
 
     fun selectDice(type: DiceType) {
-        _internalState.value = _internalState.value.copy(selectedDice = type)
+        _internalState.value = _internalState.value.copy(
+            selectedDice = type,
+            displayedResult = "1",
+            finalResult = 1,
+            breakdown = ""
+        )
     }
 
     fun updateCustomFormula(formula: String) {
