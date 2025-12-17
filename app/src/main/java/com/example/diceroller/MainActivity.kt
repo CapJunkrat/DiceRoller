@@ -17,6 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -1260,8 +1261,20 @@ fun ExplosionEffect(trigger: Long) {
 fun DiceSelector(uiState: DiceUiState, onSelect: (DiceType) -> Unit) {
     if (uiState.visibleDiceTypes.isEmpty()) return
 
+    // Add list state
+    val listState = rememberLazyListState()
+
+    // Scroll to selected item when it changes
+    LaunchedEffect(uiState.selectedDice) {
+        val index = uiState.visibleDiceTypes.indexOf(uiState.selectedDice)
+        if (index >= 0) {
+            listState.animateScrollToItem(index)
+        }
+    }
+
     // Modern Capsule-style selector
     LazyRow(
+        state = listState,
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 16.dp),

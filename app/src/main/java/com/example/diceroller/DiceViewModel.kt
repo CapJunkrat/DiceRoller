@@ -41,10 +41,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         val standardDice = DiceType.values().filter { visibleFaces.contains(it.faces) }
         val allVisible = if (isCustomVisible) standardDice + DiceType.CUSTOM else standardDice
         
+        // Ensure the selected dice remains valid, otherwise fallback
         val newSelected = if (state.selectedDice in allVisible) state.selectedDice else allVisible.firstOrNull() ?: DiceType.D6
 
         state.copy(
-            visibleDiceTypes = allVisible.sortedBy { it.faces },
+            // Custom dice is always last
+            visibleDiceTypes = allVisible.sortedBy { if (it == DiceType.CUSTOM) Int.MAX_VALUE else it.faces },
             selectedDice = newSelected,
             diceStyle = currentStyle
         )
