@@ -55,6 +55,9 @@ dependencies {
 
     // DataStore for settings
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    
+    // AdMob
+    implementation("com.google.android.gms:play-services-ads:23.3.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

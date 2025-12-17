@@ -1,16 +1,19 @@
 package com.example.diceroller
 
+import android.app.Activity
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.os.Bundle
 import android.view.HapticFeedbackConstants
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -18,12 +21,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
@@ -47,6 +54,7 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -59,6 +67,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.diceroller.data.DiceStyle
 import com.example.diceroller.ui.settings.SettingsScreen
 import com.example.diceroller.ui.theme.DiceRollerTheme
+import com.google.android.gms.ads.MobileAds
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
@@ -80,6 +89,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        
+        // Initialize AdMob
+        MobileAds.initialize(this) {}
+        
         setContent {
             DiceRollerTheme {
                 DiceAppWithNavigation()
@@ -123,11 +136,13 @@ class SoundManager(context: Context) {
 @Composable
 fun DiceAppWithNavigation() {
     val navController = rememberNavController()
+    val context = LocalContext.current
     
     // Initialize SoundManager
-    val context = LocalContext.current
-    // Use remember to keep the instance across recompositions
     val soundManager = remember { SoundManager(context) }
+    
+    // Initialize AdMobHelper
+    val adMobHelper = remember { AdMobHelper(context).apply { loadRewardedAd() } }
 
     // Release SoundPool when the app is destroyed
     DisposableEffect(Unit) {
@@ -144,7 +159,133 @@ fun DiceAppWithNavigation() {
             )
         }
         composable("settings") {
-            SettingsScreen(onNavigateBack = { navController.popBackStack() })
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToDonate = { navController.navigate("donate") }
+            )
+        }
+        composable("donate") {
+            val activity = LocalContext.current as? Activity
+            DonateScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onWatchAd = {
+                    activity?.let { act ->
+                        if (adMobHelper.isAdReady()) {
+                            adMobHelper.showRewardedAd(act) { amount, type ->
+                                Toast.makeText(act, "Thanks for supporting! You earned $amount $type!", Toast.LENGTH_LONG).show()
+                            }
+                        } else {
+                            Toast.makeText(act, "Ad is not ready yet. Please try again in a moment.", Toast.LENGTH_SHORT).show()
+                            adMobHelper.loadRewardedAd()
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Donate") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Top
+        ) {
+            Text(
+                text = "Support the Developer",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(16.dp)
+            )
+            
+            Text(
+                text = "If you enjoy using this app, please consider donating. Thank you for your support!",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp)
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Watch Ad Button
+            OutlinedButton(
+                onClick = onWatchAd,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 32.dp),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Icon(Icons.Default.PlayArrow, contentDescription = "Watch Ad")
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Watch Ad to Support (Free)")
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Alipay QR
+            Text(
+                text = "Alipay",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            // Placeholder for Alipay QR Code
+            // Replace R.drawable.alipay_qr with your actual resource
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.LightGray),
+                contentAlignment = Alignment.Center
+            ) {
+                  Image(painter = painterResource(id = R.drawable.alipay_qr), contentDescription = "Alipay QR Code")
+//                 Text("Place alipay_qr.png in res/drawable", textAlign = TextAlign.Center)
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // WeChat QR
+            Text(
+                text = "WeChat Pay",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            // Placeholder for WeChat QR Code
+            // Replace R.drawable.wechat_qr with your actual resource
+            Box(
+                modifier = Modifier
+                    .size(200.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Color.LightGray),
+                contentAlignment = Alignment.Center
+            ) {
+                  Image(painter = painterResource(id = R.drawable.wechat_qr), contentDescription = "WeChat QR Code")
+//                 Text("Place wechat_qr.png in res/drawable", textAlign = TextAlign.Center)
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
