@@ -104,7 +104,6 @@ class SoundManager(context: Context) {
             .build()
 
         rollSoundId = soundPool.load(context, R.raw.dice_roll, 1)
-//        rollSoundId = 0
     }
 
     fun playRollSound() {
@@ -169,14 +168,22 @@ fun DiceScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         containerColor = Color(0xFFF7F9FC), // Light minimalist background
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = onNavigateToSettings,
-                containerColor = CartoonColors.Outline,
-                contentColor = Color.White
-            ) {
-                Icon(Icons.Default.Settings, contentDescription = "Settings")
-            }
+        topBar = {
+            TopAppBar(
+                title = { },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Settings",
+                            tint = CartoonColors.Outline
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent
+                )
+            )
         }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
