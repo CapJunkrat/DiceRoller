@@ -14,10 +14,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.DiceRoller">
 
-        <!-- Sample AdMob App ID: ca-app-pub-3940256099942544~3347511713 -->
+        <!-- AdMob App ID -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
+            android:value="ca-app-pub-3993081078975241~1749589499"/>
 
         <activity
             android:name=".MainActivity"

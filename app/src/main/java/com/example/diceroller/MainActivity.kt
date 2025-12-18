@@ -253,7 +253,7 @@ fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
             )
             
             Text(
-                text = "If you enjoy using this app, please consider donating. Thank you for your support!",
+                text = "If you enjoy using this app, please consider supporting. Thank you!",
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp)
@@ -274,36 +274,6 @@ fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
                 Text("Watch Ad to Support (Free)")
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Alipay QR
-            Text(
-                text = "Alipay",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            QrCodeSection(
-                resourceId = R.drawable.alipay_qr,
-                name = "alipay_qr"
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // WeChat QR
-            Text(
-                text = "WeChat Pay",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            QrCodeSection(
-                resourceId = R.drawable.wechat_qr,
-                name = "wechat_qr"
-            )
-            
             Spacer(modifier = Modifier.height(32.dp))
         }
     }

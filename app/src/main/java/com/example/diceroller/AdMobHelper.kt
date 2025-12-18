@@ -13,8 +13,8 @@ import com.google.android.gms.ads.rewarded.RewardedAdLoadCallback
 
 class AdMobHelper(private val context: Context) {
     private var rewardedAd: RewardedAd? = null
-    // Test Ad Unit ID for Rewarded Ads
-    private val adUnitId = "ca-app-pub-3940256099942544/5224354917"
+    // Ad Unit ID for Rewarded Ads
+    private val adUnitId = "ca-app-pub-3993081078975241/8590330013"
 
     fun loadRewardedAd() {
         val adRequest = AdRequest.Builder().build()
