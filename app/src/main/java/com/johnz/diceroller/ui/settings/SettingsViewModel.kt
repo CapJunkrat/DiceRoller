@@ -31,14 +31,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             initialValue = true
         )
 
-    // New state for dice style
     val diceStyle: StateFlow<DiceStyle> = settingsRepository.diceStyleFlow
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = DiceStyle.CARTOON_25D
         )
-
+        
     private val _isSystemHapticsEnabled = MutableStateFlow(true)
     val isSystemHapticsEnabled: StateFlow<Boolean> = _isSystemHapticsEnabled.asStateFlow()
 
@@ -80,7 +79,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // New method to update style
     fun onDiceStyleChanged(style: DiceStyle) {
         viewModelScope.launch {
             settingsRepository.updateDiceStyle(style)

@@ -18,7 +18,6 @@ class SettingsRepository(private val context: Context) {
     companion object {
         private val VISIBLE_DICE_KEY = stringSetPreferencesKey("visible_dice_faces")
         private val CUSTOM_DICE_VISIBLE_KEY = booleanPreferencesKey("custom_dice_visible")
-        // New key for visual style
         private val DICE_STYLE_KEY = stringPreferencesKey("dice_visual_style")
 
         val DEFAULT_DICE_FACES = setOf("4", "6", "8", "10", "12", "20", "100")
@@ -35,7 +34,6 @@ class SettingsRepository(private val context: Context) {
             preferences[CUSTOM_DICE_VISIBLE_KEY] ?: true
         }
 
-    // New flow for dice style
     val diceStyleFlow: Flow<DiceStyle> = context.dataStore.data
         .map { preferences ->
             val styleName = preferences[DICE_STYLE_KEY]
@@ -59,7 +57,6 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
-    // New function to update style
     suspend fun updateDiceStyle(style: DiceStyle) {
         context.dataStore.edit { settings ->
             settings[DICE_STYLE_KEY] = style.name

@@ -24,7 +24,11 @@ data class DiceUiState(
     val customFormula: String = "",
     val visibleDiceTypes: List<DiceType> = emptyList(),
     val rollTrigger: Long = 0L,
-    val diceStyle: DiceStyle = DiceStyle.CARTOON_25D
+    val diceStyle: DiceStyle = DiceStyle.CARTOON_25D,
+    
+    // Interactive controls state (for standard dice)
+    val customDiceCount: Int = 1,
+    val customModifier: Int = 0
 )
 
 class DiceViewModel(application: Application) : AndroidViewModel(application) {
@@ -45,7 +49,6 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         val newSelected = if (state.selectedDice in allVisible) state.selectedDice else allVisible.firstOrNull() ?: DiceType.D6
 
         state.copy(
-            // Custom dice is always last
             visibleDiceTypes = allVisible.sortedBy { if (it == DiceType.CUSTOM) Int.MAX_VALUE else it.faces },
             selectedDice = newSelected,
             diceStyle = currentStyle
@@ -59,16 +62,31 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     private var rollJob: Job? = null
 
     fun selectDice(type: DiceType) {
+        // Reset interactive controls when switching dice type
         _internalState.value = _internalState.value.copy(
             selectedDice = type,
             displayedResult = "1",
             finalResult = 1,
-            breakdown = ""
+            breakdown = "",
+            customDiceCount = 1,
+            customModifier = 0
         )
     }
 
     fun updateCustomFormula(formula: String) {
         _internalState.value = _internalState.value.copy(customFormula = formula)
+    }
+    
+    // Interactive Button Methods
+    fun changeCustomDiceCount(delta: Int) {
+        val current = _internalState.value.customDiceCount
+        val newCount = (current + delta).coerceAtLeast(1) // Minimum 1 die
+        _internalState.value = _internalState.value.copy(customDiceCount = newCount)
+    }
+    
+    fun changeCustomModifier(delta: Int) {
+        val current = _internalState.value.customModifier
+        _internalState.value = _internalState.value.copy(customModifier = current + delta)
     }
 
     fun rollDice() {
@@ -76,44 +94,63 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
 
         rollJob?.cancel()
         rollJob = viewModelScope.launch {
-            // Trigger roll effects (Particles + Sound)
             val triggerTime = System.currentTimeMillis()
             _internalState.value = _internalState.value.copy(
                 isRolling = true,
                 rollTrigger = triggerTime
             )
 
-            val currentType = _internalState.value.selectedDice
+            // Get current validated state from uiState
+            val currentState = uiState.value
+            val currentType = currentState.selectedDice
+            
+            // Determine formula based on type
             val formula = if (currentType == DiceType.CUSTOM) {
-                _internalState.value.customFormula
+                // Custom Dice always uses the text formula input
+                currentState.customFormula
             } else {
-                "1d${currentType.faces}"
+                // Standard Dice (D4, D6...) always use the interactive controls
+                val count = currentState.customDiceCount
+                val mod = currentState.customModifier
+                val faces = currentType.faces
+                val sign = if (mod >= 0) "+" else "" // Negative numbers carry their own sign
+                
+                // e.g., "2d6+3" or "1d20-2"
+                "${count}d${faces}${if (mod != 0) "$sign$mod" else ""}"
             }
+            
+            // 1. Parse and calculate the final result
             val result = DiceParser.parseAndRoll(formula)
 
             val animationDuration = 500L
             val updateInterval = 60L
             val startTime = System.currentTimeMillis()
             
-            var lastDisplayValue = _internalState.value.displayedResult.toIntOrNull() ?: 1
+            var lastDisplayValueStr = _internalState.value.displayedResult
 
             while (System.currentTimeMillis() < startTime + animationDuration) {
-                val maxFace = if (currentType == DiceType.CUSTOM) result.maxPossible else currentType.faces
-                
-                var nextValue: Int
-                if (maxFace > 1) {
-                    do {
-                        nextValue = Random.nextInt(1, maxFace + 1)
-                    } while (nextValue == lastDisplayValue)
+                // 2. Animation Logic
+                var nextValue = 0
+                if (result.rolls.isNotEmpty()) {
+                    nextValue = result.rolls.sumOf { rollItem ->
+                        rollItem.die.roll() * rollItem.coefficient
+                    }
                 } else {
                     nextValue = 1
                 }
                 
-                lastDisplayValue = nextValue
-                _internalState.value = _internalState.value.copy(displayedResult = nextValue.toString())
+                if (nextValue.toString() == lastDisplayValueStr && result.maxTotal > 1) {
+                     if (result.rolls.isNotEmpty()) {
+                        nextValue = result.rolls.sumOf { it.die.roll() * it.coefficient }
+                    }
+                }
+
+                lastDisplayValueStr = nextValue.toString()
+                _internalState.value = _internalState.value.copy(displayedResult = lastDisplayValueStr)
                 delay(updateInterval)
             }
 
+            // 3. Set Final Result
             _internalState.value = _internalState.value.copy(
                 isRolling = false,
                 displayedResult = result.total.toString(),

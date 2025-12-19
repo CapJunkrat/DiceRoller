@@ -6,7 +6,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -21,7 +20,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -126,7 +124,7 @@ fun SettingsScreen(
                 }
             }
 
-            // --- Visual Style Section (Horizontal) ---
+            // --- Visual Style Section ---
             Text(
                 text = "Visual Style",
                 style = MaterialTheme.typography.titleMedium,
@@ -163,9 +161,26 @@ fun SettingsScreen(
 
             Divider(modifier = Modifier.padding(vertical = 16.dp))
 
-            // --- Visible Dice Section ---
+            // --- Custom Dice Configuration ---
             Text(
-                text = "Visible Dice",
+                text = "Custom Dice Settings",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+             DiceVisibilityRow(
+                label = "Enable Custom Dice",
+                isVisible = isCustomVisible,
+                onCheckedChange = { isChecked ->
+                    viewModel.onCustomDiceVisibilityChanged(isChecked)
+                }
+            )
+
+            Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+            // --- Visible Standard Dice ---
+            Text(
+                text = "Visible Standard Dice",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
@@ -180,16 +195,6 @@ fun SettingsScreen(
                 )
             }
             
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-            DiceVisibilityRow(
-                label = "Custom Formula",
-                isVisible = isCustomVisible,
-                onCheckedChange = { isChecked ->
-                    viewModel.onCustomDiceVisibilityChanged(isChecked)
-                }
-            )
-
             Divider(modifier = Modifier.padding(vertical = 16.dp))
             
             // --- Donate Section ---
@@ -268,8 +273,8 @@ private fun DiceVisibilityRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!isVisible) } // Make whole row clickable
-            .padding(horizontal = 16.dp, vertical = 4.dp), // Reduced vertical padding
+            .clickable { onCheckedChange(!isVisible) }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
