@@ -1,10 +1,10 @@
-package com.example.diceroller
+package com.johnz.diceroller
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.diceroller.data.DiceStyle
-import com.example.diceroller.data.SettingsRepository
+import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.SettingsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -1,4 +1,4 @@
-package com.example.diceroller.data
+package com.johnz.diceroller.data
 
 import android.content.Context
 import androidx.datastore.core.DataStore

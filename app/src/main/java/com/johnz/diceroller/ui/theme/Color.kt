@@ -1,4 +1,4 @@
-package com.example.diceroller.ui.theme
+package com.johnz.diceroller.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

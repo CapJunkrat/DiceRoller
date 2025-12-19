@@ -1,4 +1,4 @@
-package com.example.diceroller
+package com.johnz.diceroller
 
 import android.app.Activity
 import android.content.ContentValues
@@ -69,9 +69,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.diceroller.data.DiceStyle
-import com.example.diceroller.ui.settings.SettingsScreen
-import com.example.diceroller.ui.theme.DiceRollerTheme
+import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.ui.settings.SettingsScreen
+import com.johnz.diceroller.ui.theme.DiceRollerTheme
 import com.google.android.gms.ads.MobileAds
 import kotlin.math.cos
 import kotlin.math.sin

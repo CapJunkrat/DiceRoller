@@ -1,4 +1,4 @@
-package com.example.diceroller.data
+package com.johnz.diceroller.data
 
 enum class DiceStyle {
     FLAT_2D,

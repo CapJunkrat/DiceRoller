@@ -1,4 +1,4 @@
-package com.example.diceroller.ui.settings
+package com.johnz.diceroller.ui.settings
 
 import android.content.Intent
 import android.provider.Settings
@@ -30,7 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.DiceStyle
 
 private val ALL_CONFIGURABLE_DICE = listOf(4, 6, 8, 10, 12, 20, 100)
 

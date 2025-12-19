@@ -1,4 +1,4 @@
-package com.example.diceroller
+package com.johnz.diceroller
 
 import kotlin.random.Random
 

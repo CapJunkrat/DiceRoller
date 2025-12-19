@@ -1,4 +1,4 @@
-package com.example.diceroller
+package com.johnz.diceroller
 
 import android.app.Activity
 import android.content.Context

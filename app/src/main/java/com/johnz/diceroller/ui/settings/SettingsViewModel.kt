@@ -1,11 +1,11 @@
-package com.example.diceroller.ui.settings
+package com.johnz.diceroller.ui.settings
 
 import android.app.Application
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.diceroller.data.DiceStyle
-import com.example.diceroller.data.SettingsRepository
+import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.SettingsRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow

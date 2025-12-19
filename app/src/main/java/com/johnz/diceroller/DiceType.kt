@@ -1,4 +1,4 @@
-package com.example.diceroller
+package com.johnz.diceroller
 
 /**
  * Represents the different types of dice available in the app.
