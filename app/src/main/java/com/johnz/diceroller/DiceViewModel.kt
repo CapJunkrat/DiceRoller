@@ -98,7 +98,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             var lastDisplayValue = _internalState.value.displayedResult.toIntOrNull() ?: 1
 
             while (System.currentTimeMillis() < startTime + animationDuration) {
-                val maxFace = if (currentType == DiceType.CUSTOM) 100 else currentType.faces
+                val maxFace = if (currentType == DiceType.CUSTOM) result.maxPossible else currentType.faces
                 
                 var nextValue: Int
                 if (maxFace > 1) {
