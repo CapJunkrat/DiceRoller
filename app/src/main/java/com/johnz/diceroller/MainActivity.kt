@@ -22,6 +22,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -47,12 +48,15 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -87,6 +91,42 @@ object CartoonColors {
     val Outline = Color(0xFF2D3436) // Dark Charcoal for borders
     val Shadow = Color(0xFF000000).copy(alpha = 0.2f)
 }
+
+// Custom History Icon (since it's not in core icons)
+val HistoryIcon: ImageVector = ImageVector.Builder(
+    name = "History",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(13.0f, 3.0f)
+        curveTo(8.03f, 3.0f, 4.0f, 7.03f, 4.0f, 12.0f)
+        horizontalLineTo(1.0f)
+        lineToRelative(3.89f, 3.89f)
+        lineToRelative(0.07f, 0.14f)
+        lineTo(9.0f, 12.0f)
+        horizontalLineTo(6.0f)
+        curveToRelative(0.0f, -3.87f, 3.13f, -7.0f, 7.0f, -7.0f)
+        reflectiveCurveToRelative(7.0f, 3.13f, 7.0f, 7.0f)
+        reflectiveCurveToRelative(-3.13f, 7.0f, -7.0f, 7.0f)
+        curveToRelative(-1.93f, 0.0f, -3.68f, -0.79f, -4.94f, -2.06f)
+        lineToRelative(-1.42f, 1.42f)
+        curveTo(8.27f, 19.99f, 10.51f, 21.0f, 13.0f, 21.0f)
+        curveToRelative(4.97f, 0.0f, 9.0f, -4.03f, 9.0f, -9.0f)
+        reflectiveCurveTo(17.97f, 3.0f, 13.0f, 3.0f)
+        close()
+        moveTo(12.0f, 8.0f)
+        verticalLineToRelative(5.0f)
+        lineToRelative(4.28f, 2.54f)
+        lineToRelative(0.72f, -1.21f)
+        lineToRelative(-3.5f, -2.08f)
+        verticalLineTo(8.0f)
+        horizontalLineTo(12.0f)
+        close()
+    }
+}.build()
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -141,6 +181,9 @@ fun DiceAppWithNavigation() {
     val navController = rememberNavController()
     val context = LocalContext.current
     
+    // Initialize ViewModel here to share across screens
+    val viewModel: DiceViewModel = viewModel()
+    
     // Initialize SoundManager
     val soundManager = remember { SoundManager(context) }
     
@@ -158,7 +201,9 @@ fun DiceAppWithNavigation() {
         composable("main") {
             DiceScreen(
                 onNavigateToSettings = { navController.navigate("settings") },
-                soundManager = soundManager
+                onNavigateToHistory = { navController.navigate("history") },
+                soundManager = soundManager,
+                viewModel = viewModel
             )
         }
         composable("settings") {
@@ -183,6 +228,12 @@ fun DiceAppWithNavigation() {
                         }
                     }
                 }
+            )
+        }
+        composable("history") {
+            HistoryScreen(
+                onNavigateBack = { navController.popBackStack() },
+                viewModel = viewModel
             )
         }
     }
@@ -281,6 +332,7 @@ fun DonateScreen(onNavigateBack: () -> Unit, onWatchAd: () -> Unit) {
 @Composable
 fun DiceScreen(
     onNavigateToSettings: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     soundManager: SoundManager,
     viewModel: DiceViewModel = viewModel()
 ) {
@@ -305,6 +357,15 @@ fun DiceScreen(
                         Icon(
                             imageVector = Icons.Default.Menu,
                             contentDescription = "Settings",
+                            tint = CartoonColors.Outline
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(
+                            imageVector = HistoryIcon,
+                            contentDescription = "History",
                             tint = CartoonColors.Outline
                         )
                     }
@@ -1076,6 +1137,86 @@ fun ControlGroup(
                 fontWeight = FontWeight.Bold,
                 color = CartoonColors.Outline,
                 textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistoryScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: DiceViewModel
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Roll History") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(uiState.history) { item ->
+                HistoryItemCard(item)
+            }
+            if (uiState.history.isEmpty()) {
+                item {
+                    Text(
+                        text = "No rolls yet.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(32.dp),
+                        textAlign = TextAlign.Center,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoryItemCard(item: RollHistoryItem) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.breakdown,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+                Text(
+                    text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(item.timestamp)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.LightGray
+                )
+            }
+            Text(
+                text = item.result,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
+                color = CartoonColors.Outline
             )
         }
     }

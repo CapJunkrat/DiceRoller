@@ -15,6 +15,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
+data class RollHistoryItem(
+    val result: String,
+    val breakdown: String,
+    val timestamp: Long = System.currentTimeMillis()
+)
+
 data class DiceUiState(
     val displayedResult: String = "1",
     val finalResult: Int = 1,
@@ -28,7 +34,9 @@ data class DiceUiState(
     
     // Interactive controls state (for standard dice)
     val customDiceCount: Int = 1,
-    val customModifier: Int = 0
+    val customModifier: Int = 0,
+    
+    val history: List<RollHistoryItem> = emptyList()
 )
 
 class DiceViewModel(application: Application) : AndroidViewModel(application) {
@@ -151,11 +159,17 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 3. Set Final Result
+            val newHistoryItem = RollHistoryItem(
+                result = result.total.toString(),
+                breakdown = result.breakdown
+            )
+            
             _internalState.value = _internalState.value.copy(
                 isRolling = false,
                 displayedResult = result.total.toString(),
                 finalResult = result.total,
-                breakdown = result.breakdown
+                breakdown = result.breakdown,
+                history = listOf(newHistoryItem) + _internalState.value.history
             )
         }
     }
