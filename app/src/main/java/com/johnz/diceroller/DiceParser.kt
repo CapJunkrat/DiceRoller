@@ -9,6 +9,26 @@ import com.johnz.diceroller.data.db.RollMode
 object DiceParser {
 
     /**
+     * Checks if the formula string is valid.
+     * A valid formula must allow being fully parsed by the dice regex without leftover characters (ignoring whitespace).
+     */
+    fun isValid(formula: String): Boolean {
+        if (formula.isBlank()) return false
+        val input = formula.replace("\\s".toRegex(), "").lowercase()
+        
+        // Regex must match the same pattern used in parsing
+        // ([+\-]?) : Group 1 (Sign)
+        // (?:(\d*)d(\d+)|(\d+)) : Group 2 (Count), Group 3 (Faces) OR Group 4 (Constant)
+        val regex = Regex("([+\\-]?)(?:(\\d*)d(\\d+)|(\\d+))")
+        
+        val matches = regex.findAll(input)
+        if (matches.count() == 0) return false
+        
+        val matchedLength = matches.sumOf { it.value.length }
+        return matchedLength == input.length
+    }
+
+    /**
      * Parses a formula string and executes the roll.
      * Example formulas: "d20", "2d6+3", "1d100 - 5".
      * Supports Advantage/Disadvantage by rolling the entire formula twice.

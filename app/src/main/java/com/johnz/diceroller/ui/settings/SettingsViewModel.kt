@@ -89,6 +89,12 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             )
         }
     }
+
+    fun updateActionCard(card: ActionCard) {
+        viewModelScope.launch {
+            gameRepository.updateActionCard(card)
+        }
+    }
     
     fun deleteActionCard(card: ActionCard) {
         viewModelScope.launch {

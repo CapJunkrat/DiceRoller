@@ -10,11 +10,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.johnz.diceroller.DiceParser
 import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.db.ActionCard
@@ -50,14 +53,41 @@ fun SettingsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     
     var showAddCardDialog by remember { mutableStateOf(false) }
+    var cardToEdit by remember { mutableStateOf<ActionCard?>(null) }
     var cardToDelete by remember { mutableStateOf<ActionCard?>(null) }
 
     if (showAddCardDialog) {
-        CreateActionCardDialog(
+        ActionCardDialog(
+            title = "New Action Card",
+            confirmText = "Create",
+            existingNames = allCards.map { it.name },
             onDismiss = { showAddCardDialog = false },
             onConfirm = { name, formula, visual, isMutable ->
                 viewModel.addCustomActionCard(name, formula, visual, isMutable)
                 showAddCardDialog = false
+            }
+        )
+    }
+
+    if (cardToEdit != null) {
+        ActionCardDialog(
+            title = "Edit Action Card",
+            confirmText = "Update",
+            existingNames = allCards.filter { it.id != cardToEdit!!.id }.map { it.name }, // Exclude self
+            initialName = cardToEdit!!.name,
+            initialFormula = cardToEdit!!.formula,
+            initialVisual = cardToEdit!!.visualType,
+            initialIsMutable = cardToEdit!!.isMutable,
+            onDismiss = { cardToEdit = null },
+            onConfirm = { name, formula, visual, isMutable ->
+                val updatedCard = cardToEdit!!.copy(
+                    name = name,
+                    formula = formula,
+                    visualType = visual,
+                    isMutable = isMutable
+                )
+                viewModel.updateActionCard(updatedCard)
+                cardToEdit = null
             }
         )
     }
@@ -222,7 +252,11 @@ fun SettingsScreen(
             // Use Column for items since we are inside a verticalScroll Column
             Column {
                 sortedCards.forEach { card ->
-                    ActionCardRow(card, onDelete = { cardToDelete = card })
+                    ActionCardRow(
+                        card = card, 
+                        onEdit = { cardToEdit = card },
+                        onDelete = { cardToDelete = card }
+                    )
                 }
             }
             
@@ -236,6 +270,23 @@ fun SettingsScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Create New Action Card")
             }
+            
+            Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+            // --- Custom Dice Configuration ---
+            Text(
+                text = "Custom Dice Settings",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+
+             DiceVisibilityRow(
+                label = "Enable Quick Formula Input",
+                isVisible = viewModel.isCustomDiceVisible.collectAsState().value,
+                onCheckedChange = { isChecked ->
+                    viewModel.onCustomDiceVisibilityChanged(isChecked)
+                }
+            )
             
             Divider(modifier = Modifier.padding(vertical = 16.dp))
             
@@ -270,7 +321,7 @@ fun SettingsScreen(
 }
 
 @Composable
-fun ActionCardRow(card: ActionCard, onDelete: () -> Unit) {
+fun ActionCardRow(card: ActionCard, onEdit: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -279,7 +330,12 @@ fun ActionCardRow(card: ActionCard, onDelete: () -> Unit) {
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = card.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            Text(text = card.formula, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            val desc = if (card.isMutable) "Adjustable (${card.visualType.label})" else card.formula
+            Text(text = desc, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        }
+        
+        IconButton(onClick = onEdit) {
+            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
         }
         IconButton(onClick = onDelete) {
             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
@@ -288,62 +344,158 @@ fun ActionCardRow(card: ActionCard, onDelete: () -> Unit) {
 }
 
 @Composable
-fun CreateActionCardDialog(
+fun ActionCardDialog(
+    title: String,
+    confirmText: String,
+    existingNames: List<String>,
+    initialName: String = "",
+    initialFormula: String = "",
+    initialVisual: DiceType = DiceType.D20,
+    initialIsMutable: Boolean = false,
     onDismiss: () -> Unit,
     onConfirm: (String, String, DiceType, Boolean) -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var formula by remember { mutableStateOf("") }
-    var selectedVisual by remember { mutableStateOf(DiceType.D20) }
-    var isMutable by remember { mutableStateOf(false) }
+    var name by remember { mutableStateOf(initialName) }
+    var formula by remember { mutableStateOf(initialFormula) }
+    var selectedVisual by remember { mutableStateOf(initialVisual) }
+    var selectedBaseDie by remember { mutableStateOf(if (initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) initialVisual else DiceType.D20) }
     
-    val canSubmit = name.isNotBlank() && formula.isNotBlank()
+    // Determine initial mode selection
+    // 0 = Fixed, 1 = Adjustable
+    // If opening for Edit, infer mode from isMutable
+    var modeSelection by remember { mutableStateOf(if (initialIsMutable) 1 else 0) }
+    
+    // Update selectedBaseDie if we are in Adjustable mode and editing
+    LaunchedEffect(Unit) {
+        if (initialIsMutable && initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) {
+            selectedBaseDie = initialVisual
+        }
+    }
+    
+    var validationError by remember { mutableStateOf<String?>(null) }
+    var showErrorDialog by remember { mutableStateOf(false) }
+
+    if (showErrorDialog && validationError != null) {
+        AlertDialog(
+            onDismissRequest = { showErrorDialog = false },
+            title = { Text("Invalid Input") },
+            text = { Text(validationError!!) },
+            confirmButton = {
+                TextButton(onClick = { showErrorDialog = false }) { Text("OK") }
+            }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Action Card") },
+        title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                
+                Text(
+                    text = "Action Mode / Roll Behavior:",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Row(
+                    Modifier.fillMaxWidth().selectable(selected = (modeSelection == 0), onClick = { modeSelection = 0 }),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = (modeSelection == 0), onClick = { modeSelection = 0 })
+                    Text("Fixed Roll", style = MaterialTheme.typography.bodyMedium)
+                }
+                Row(
+                    Modifier.fillMaxWidth().selectable(selected = (modeSelection == 1), onClick = { modeSelection = 1 }),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = (modeSelection == 1), onClick = { modeSelection = 1 })
+                    Text("Adjustable Roll", style = MaterialTheme.typography.bodyMedium)
+                }
+
+                Divider(modifier = Modifier.padding(vertical = 4.dp))
+
                 OutlinedTextField(
                     value = name, 
                     onValueChange = { name = it }, 
-                    label = { Text("Name (e.g. Greatsword)") },
-                    singleLine = true
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = formula, 
-                    onValueChange = { formula = it }, 
-                    label = { Text("Formula (e.g. 2d6 + 3)") },
-                    singleLine = true
-                )
-                
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth().clickable { isMutable = !isMutable }
-                ) {
-                    Checkbox(checked = isMutable, onCheckedChange = { isMutable = it })
-                    Text("Interactive Controls (Count/Modifier)")
-                }
-                
-                Text("Icon / Visual:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(DiceType.values().filter { it.faces > 0 }) { type ->
-                        val isSelected = selectedVisual == type
-                        FilterChip(
-                            selected = isSelected,
-                            onClick = { selectedVisual = type },
-                            label = { Text(type.label) }
-                        )
+
+                if (modeSelection == 0) {
+                    OutlinedTextField(
+                        value = formula, 
+                        onValueChange = { formula = it }, 
+                        label = { Text("Formula (e.g. 2d6 + 3)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Text("Icon / Visual:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
+                            val isSelected = selectedVisual == type
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedVisual = type },
+                                label = { Text(type.label) }
+                            )
+                        }
                     }
+                } else {
+                    Text("Select Base Die:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
+                            val isSelected = selectedBaseDie == type
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedBaseDie = type },
+                                label = { Text(type.label) }
+                            )
+                        }
+                    }
+                    Text(
+                        text = "Defaults to 1${selectedBaseDie.label.lowercase()}. You can adjust count/modifier when rolling.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
                 }
             }
         },
         confirmButton = {
             Button(
-                onClick = { if (canSubmit) onConfirm(name, formula, selectedVisual, isMutable) },
-                enabled = canSubmit
+                onClick = { 
+                    // Validation Logic
+                    if (name.isBlank()) {
+                        validationError = "Name cannot be empty."
+                        showErrorDialog = true
+                        return@Button
+                    }
+                    
+                    if (existingNames.any { it.equals(name, ignoreCase = true) }) {
+                        validationError = "A card with this name already exists."
+                        showErrorDialog = true
+                        return@Button
+                    }
+
+                    if (modeSelection == 0) {
+                        if (formula.isBlank()) {
+                            validationError = "Formula cannot be empty."
+                            showErrorDialog = true
+                            return@Button
+                        }
+                        if (!DiceParser.isValid(formula)) {
+                            validationError = "Invalid formula format. Use standard notation like '2d6+3'."
+                            showErrorDialog = true
+                            return@Button
+                        }
+                        onConfirm(name, formula, selectedVisual, false)
+                    } else {
+                        val generatedFormula = "1d${selectedBaseDie.faces}"
+                        onConfirm(name, generatedFormula, selectedBaseDie, true)
+                    }
+                }
             ) {
-                Text("Create")
+                Text(confirmText)
             }
         },
         dismissButton = {
@@ -387,6 +539,31 @@ private fun StyleChip(
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             color = contentColor,
             textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun DiceVisibilityRow(
+    label: String,
+    isVisible: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!isVisible) }
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Spacer(modifier = Modifier.weight(1f))
+        Switch(
+            checked = isVisible,
+            onCheckedChange = onCheckedChange
         )
     }
 }
