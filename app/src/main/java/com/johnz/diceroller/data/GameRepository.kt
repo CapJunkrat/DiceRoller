@@ -70,42 +70,36 @@ class GameRepository(private val database: AppDatabase) {
     suspend fun initSystemCardsIfNeeded() {
         if (cardDao.getCount() == 0) {
             // Seed system cards
-            val types = listOf(DiceType.D4, DiceType.D6, DiceType.D8, DiceType.D10, DiceType.D12, DiceType.D20, DiceType.D100)
-            types.forEach { type ->
-                cardDao.insert(
-                    ActionCard(
-                        name = type.label,
-                        formula = "1d${type.faces}",
-                        visualType = type,
-                        isSystem = true,
-                        isMutable = true
-                    )
-                )
-            }
-            // Add Custom Input Card
+            // 1. D6
             cardDao.insert(
                 ActionCard(
-                    name = "Custom",
-                    formula = "",
-                    visualType = DiceType.CUSTOM,
+                    name = "D6",
+                    formula = "1d6",
+                    visualType = DiceType.D6,
                     isSystem = true,
-                    isMutable = false
+                    isMutable = true
                 )
             )
-        } else {
-            // Ensure Custom card exists if not present (for migration)
-            val customCards = cardDao.getSystemCards().filter { it.visualType == DiceType.CUSTOM }
-            if (customCards.isEmpty()) {
-                cardDao.insert(
-                    ActionCard(
-                        name = "Custom",
-                        formula = "",
-                        visualType = DiceType.CUSTOM,
-                        isSystem = true,
-                        isMutable = false
-                    )
+            // 2. D20
+            cardDao.insert(
+                ActionCard(
+                    name = "D20",
+                    formula = "1d20",
+                    visualType = DiceType.D20,
+                    isSystem = true,
+                    isMutable = true
                 )
-            }
+            )
+            // 3. Attack (1d20 + 1d4 + 2)
+            cardDao.insert(
+                ActionCard(
+                    name = "Attack",
+                    formula = "1d20+1d4+2",
+                    visualType = DiceType.D20, // Using D20 visual for attack
+                    isSystem = true,
+                    isMutable = false // Complex formula, so not mutable count/mod
+                )
+            )
         }
     }
 }

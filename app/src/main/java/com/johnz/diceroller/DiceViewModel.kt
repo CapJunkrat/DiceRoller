@@ -66,15 +66,10 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         settingsRepository.diceStyleFlow
     ) { state, allCards, currentStyle ->
         
-        // Sort: System dice by faces, then User cards, then Custom Input (if treated as system)
+        // Sort: System cards first, then Custom cards, both by creation order (ID)
         val sortedCards = allCards.sortedWith(
-            compareBy<ActionCard> { 
-                if (it.visualType == DiceType.CUSTOM) 2 // Custom at end
-                else if (it.isSystem) 0 // System first
-                else 1 // User cards middle
-            }
-            .thenBy { it.visualType.faces }
-            .thenBy { it.name }
+            compareBy<ActionCard> { !it.isSystem } // System (true) comes first? No, !true is false. !false is true. false < true. So System first.
+            .thenBy { it.id }
         )
 
         // Maintain selection if possible, else default to first
