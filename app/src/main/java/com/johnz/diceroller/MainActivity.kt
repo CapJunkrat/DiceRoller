@@ -759,56 +759,54 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                     }
                     drawInnerLines(inner)
                 }
-
                 DiceType.D10->{
-                        val top = Offset(cx, cy - radius)
-                        val bottom = Offset(cx, cy + radius)
-                        val innerY = cy + radius * 0.2f
-                        val innerX = radius * 0.55f 
-                        val innerLeft = Offset(cx - innerX, innerY)
-                        val innerRight = Offset(cx + innerX, innerY)
-                        val centerJunction = Offset(cx, cy + radius * 0.38f)
-                        val shoulderY = cy - radius * 0.25f
-                        val shoulderXOffset = radius * 0.95f
-                        val shoulderLeft = Offset(cx - shoulderXOffset, shoulderY)
-                        val shoulderRight = Offset(cx + shoulderXOffset, shoulderY)
-                        val waistY = cy + radius * 0.28f
-                        val waistXOffset = radius * 0.88f
-                        val outerLeft = Offset(cx - waistXOffset, waistY)
-                        val outerRight = Offset(cx + waistXOffset, waistY)
+                    val top = Offset(cx, cy - radius)
+                    val bottom = Offset(cx, cy + radius)
+                    val innerY = cy + radius * 0.2f
+                    val innerX = radius * 0.55f 
+                    val innerLeft = Offset(cx - innerX, innerY)
+                    val innerRight = Offset(cx + innerX, innerY)
+                    val centerJunction = Offset(cx, cy + radius * 0.38f)
+                    val shoulderY = cy - radius * 0.25f
+                    val shoulderXOffset = radius * 0.95f
+                    val shoulderLeft = Offset(cx - shoulderXOffset, shoulderY)
+                    val shoulderRight = Offset(cx + shoulderXOffset, shoulderY)
+                    val waistY = cy + radius * 0.28f
+                    val waistXOffset = radius * 0.88f
+                    val outerLeft = Offset(cx - waistXOffset, waistY)
+                    val outerRight = Offset(cx + waistXOffset, waistY)
 
-                        path.moveTo(top.x, top.y)
-                        path.lineTo(shoulderLeft.x, shoulderLeft.y)
-                        path.lineTo(outerLeft.x, outerLeft.y)
-                        path.lineTo(bottom.x, bottom.y)
-                        path.lineTo(outerRight.x, outerRight.y)
-                        path.lineTo(shoulderRight.x, shoulderRight.y)
-                        path.close()
-                        drawBase(path)
+                    path.moveTo(top.x, top.y)
+                    path.lineTo(shoulderLeft.x, shoulderLeft.y)
+                    path.lineTo(outerLeft.x, outerLeft.y)
+                    path.lineTo(bottom.x, bottom.y)
+                    path.lineTo(outerRight.x, outerRight.y)
+                    path.lineTo(shoulderRight.x, shoulderRight.y)
+                    path.close()
+                    drawBase(path)
 
-                        val centerFace = Path().apply { moveTo(top.x, top.y); lineTo(innerRight.x, innerRight.y); lineTo(centerJunction.x, centerJunction.y); lineTo(innerLeft.x, innerLeft.y); close() }
-                        drawPath(centerFace, color = Color.White.copy(alpha = 0.2f))
-                        val leftUpperFace = Path().apply { moveTo(top.x, top.y); lineTo(shoulderLeft.x, shoulderLeft.y); lineTo(outerLeft.x, outerLeft.y); lineTo(innerLeft.x, innerLeft.y); close() }
-                        drawPath(leftUpperFace, color = Color.Black.copy(alpha = 0.15f))
-                        val rightUpperFace = Path().apply { moveTo(top.x, top.y); lineTo(shoulderRight.x, shoulderRight.y); lineTo(outerRight.x, outerRight.y); lineTo(innerRight.x, innerRight.y); close() }
-                        drawPath(rightUpperFace, color = Color.Black.copy(alpha = 0.25f))
-                        val leftBottomFace = Path().apply { moveTo(centerJunction.x, centerJunction.y); lineTo(innerLeft.x, innerLeft.y); lineTo(outerLeft.x, outerLeft.y); lineTo(bottom.x, bottom.y); close() }
-                        drawPath(leftBottomFace, color = Color.Black.copy(alpha = 0.05f))
-                        val rightBottomFace = Path().apply { moveTo(centerJunction.x, centerJunction.y); lineTo(innerRight.x, innerRight.y); lineTo(outerRight.x, outerRight.y); lineTo(bottom.x, bottom.y); close() }
-                        drawPath(rightBottomFace, color = Color.Black.copy(alpha = 0.3f))
+                    val centerFace = Path().apply { moveTo(top.x, top.y); lineTo(innerRight.x, innerRight.y); lineTo(centerJunction.x, centerJunction.y); lineTo(innerLeft.x, innerLeft.y); close() }
+                    drawPath(centerFace, color = Color.White.copy(alpha = 0.2f))
+                    val leftUpperFace = Path().apply { moveTo(top.x, top.y); lineTo(shoulderLeft.x, shoulderLeft.y); lineTo(outerLeft.x, outerLeft.y); lineTo(innerLeft.x, innerLeft.y); close() }
+                    drawPath(leftUpperFace, color = Color.Black.copy(alpha = 0.15f))
+                    val rightUpperFace = Path().apply { moveTo(top.x, top.y); lineTo(shoulderRight.x, shoulderRight.y); lineTo(outerRight.x, outerRight.y); lineTo(innerRight.x, innerRight.y); close() }
+                    drawPath(rightUpperFace, color = Color.Black.copy(alpha = 0.25f))
+                    val leftBottomFace = Path().apply { moveTo(centerJunction.x, centerJunction.y); lineTo(innerLeft.x, innerLeft.y); lineTo(outerLeft.x, outerLeft.y); lineTo(bottom.x, bottom.y); close() }
+                    drawPath(leftBottomFace, color = Color.Black.copy(alpha = 0.05f))
+                    val rightBottomFace = Path().apply { moveTo(centerJunction.x, centerJunction.y); lineTo(innerRight.x, innerRight.y); lineTo(outerRight.x, outerRight.y); lineTo(bottom.x, bottom.y); close() }
+                    drawPath(rightBottomFace, color = Color.Black.copy(alpha = 0.3f))
 
-                        val innerLines = Path().apply {
-                            moveTo(top.x, top.y); lineTo(innerLeft.x, innerLeft.y)
-                            moveTo(top.x, top.y); lineTo(innerRight.x, innerRight.y)
-                            moveTo(innerLeft.x, innerLeft.y); lineTo(centerJunction.x, centerJunction.y)
-                            moveTo(innerRight.x, innerRight.y); lineTo(centerJunction.x, centerJunction.y)
-                            moveTo(innerLeft.x, innerLeft.y); lineTo(outerLeft.x, outerLeft.y)
-                            moveTo(innerRight.x, innerRight.y); lineTo(outerRight.x, outerRight.y)
-                            moveTo(centerJunction.x, centerJunction.y); lineTo(bottom.x, bottom.y)
-                        }
-                        drawInnerLines(innerLines)
+                    val innerLines = Path().apply {
+                        moveTo(top.x, top.y); lineTo(innerLeft.x, innerLeft.y)
+                        moveTo(top.x, top.y); lineTo(innerRight.x, innerRight.y)
+                        moveTo(innerLeft.x, innerLeft.y); lineTo(centerJunction.x, centerJunction.y)
+                        moveTo(innerRight.x, innerRight.y); lineTo(centerJunction.x, centerJunction.y)
+                        moveTo(innerLeft.x, innerLeft.y); lineTo(outerLeft.x, outerLeft.y)
+                        moveTo(innerRight.x, innerRight.y); lineTo(outerRight.x, outerRight.y)
+                        moveTo(centerJunction.x, centerJunction.y); lineTo(bottom.x, bottom.y)
                     }
-
+                    drawInnerLines(innerLines)
+                }
                 DiceType.D12 -> {
                     val innerRadius = radius * 0.6f 
                     val outerRadius = radius         
@@ -989,7 +987,6 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
         }
 
         if (style == DiceStyle.REALISTIC_3D) {
-            // ... Realistic 3D implementation ...
             drawCircle(color = Color.Black.copy(alpha = 0.2f), radius = radius * 1.1f, center = Offset(cx + 15f, cy + 25f))
             val radialGradient = Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.8f), color, color.copy(alpha = 0.8f), Color.Black.copy(alpha = 0.6f)), center = Offset(cx - radius * 0.3f, cy - radius * 0.3f), radius = radius * 1.8f)
             when (type) {
@@ -1174,6 +1171,32 @@ fun HistoryScreen(
     viewModel: DiceViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    
+    // State to control the clear history confirmation dialog
+    var showClearDialog by remember { mutableStateOf(false) }
+
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Clear Session History?") },
+            text = { Text("This will permanently delete all roll records for the active session '${uiState.activeSession?.name}'.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.clearCurrentHistory()
+                        showClearDialog = false
+                    }
+                ) {
+                    Text("Clear", color = CartoonColors.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -1196,7 +1219,13 @@ fun HistoryScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { viewModel.clearCurrentHistory() },
+                onClick = { 
+                    if (uiState.activeSession != null) {
+                        showClearDialog = true
+                    } else {
+                        viewModel.clearCurrentHistory() 
+                    }
+                },
                 containerColor = CartoonColors.Red,
                 contentColor = Color.White
             ) {
