@@ -4,16 +4,20 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.GameRepository
+import com.johnz.diceroller.data.RollData
 import com.johnz.diceroller.data.SettingsRepository
+import com.johnz.diceroller.data.db.AppDatabase
+import com.johnz.diceroller.data.db.GameSession
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
 data class RollHistoryItem(
     val result: String,
@@ -36,12 +40,18 @@ data class DiceUiState(
     val customDiceCount: Int = 1,
     val customModifier: Int = 0,
     
-    val history: List<RollHistoryItem> = emptyList()
+    val history: List<RollHistoryItem> = emptyList(),
+    
+    val activeSession: GameSession? = null,
+    val savedSessions: List<GameSession> = emptyList()
 )
 
 class DiceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepository = SettingsRepository(application)
+    private val database = AppDatabase.getDatabase(application)
+    private val repository = GameRepository(database)
+    
     private val _internalState = MutableStateFlow(DiceUiState())
 
     val uiState: StateFlow<DiceUiState> = combine(
@@ -68,6 +78,15 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     )
 
     private var rollJob: Job? = null
+    private var sessionJob: Job? = null
+
+    init {
+        viewModelScope.launch {
+            repository.allSessions.collect { sessions ->
+                _internalState.value = _internalState.value.copy(savedSessions = sessions)
+            }
+        }
+    }
 
     fun selectDice(type: DiceType) {
         // Reset interactive controls when switching dice type
@@ -95,6 +114,64 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     fun changeCustomModifier(delta: Int) {
         val current = _internalState.value.customModifier
         _internalState.value = _internalState.value.copy(customModifier = current + delta)
+    }
+
+    fun startNewSession(name: String) {
+        val currentHistory = _internalState.value.history
+        viewModelScope.launch {
+            val id = repository.createSession(name)
+            
+            // Transfer existing history if any (and if we were in Quick Play mode)
+            if (_internalState.value.activeSession == null && currentHistory.isNotEmpty()) {
+                val rollsToSave = currentHistory.map { 
+                    RollData(it.result, it.breakdown, it.timestamp) 
+                }
+                repository.addBatchRolls(id, rollsToSave)
+            }
+
+            val session = repository.getSession(id)
+            if (session != null) {
+                resumeSession(session)
+            }
+        }
+    }
+
+    fun resumeSession(session: GameSession) {
+        sessionJob?.cancel()
+        _internalState.value = _internalState.value.copy(activeSession = session)
+        
+        sessionJob = viewModelScope.launch {
+            repository.getRollsForSession(session.id).collectLatest { rolls ->
+                val items = rolls.map { RollHistoryItem(it.result, it.breakdown, it.timestamp) }
+                _internalState.value = _internalState.value.copy(history = items)
+            }
+        }
+    }
+
+    fun endCurrentSession() {
+        sessionJob?.cancel()
+        _internalState.value = _internalState.value.copy(activeSession = null, history = emptyList())
+    }
+    
+    fun deleteSession(session: GameSession) {
+        viewModelScope.launch {
+            if (_internalState.value.activeSession?.id == session.id) {
+                endCurrentSession()
+            }
+            repository.deleteSession(session.id)
+        }
+    }
+
+    fun clearCurrentHistory() {
+        val session = _internalState.value.activeSession
+        if (session != null) {
+            viewModelScope.launch {
+                repository.clearSessionRolls(session.id)
+            }
+        } else {
+            // Quick play, just clear state
+            _internalState.value = _internalState.value.copy(history = emptyList())
+        }
     }
 
     fun rollDice() {
@@ -158,19 +235,32 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 delay(updateInterval)
             }
 
-            // 3. Set Final Result
+            // 3. Set Final Result & Save
             val newHistoryItem = RollHistoryItem(
                 result = result.total.toString(),
                 breakdown = result.breakdown
             )
             
-            _internalState.value = _internalState.value.copy(
-                isRolling = false,
-                displayedResult = result.total.toString(),
-                finalResult = result.total,
-                breakdown = result.breakdown,
-                history = listOf(newHistoryItem) + _internalState.value.history
-            )
+            val activeSession = _internalState.value.activeSession
+            
+            if (activeSession != null) {
+                repository.addRoll(activeSession.id, result.total.toString(), result.breakdown)
+                // history update will come via flow
+                _internalState.value = _internalState.value.copy(
+                    isRolling = false,
+                    displayedResult = result.total.toString(),
+                    finalResult = result.total,
+                    breakdown = result.breakdown
+                )
+            } else {
+                _internalState.value = _internalState.value.copy(
+                    isRolling = false,
+                    displayedResult = result.total.toString(),
+                    finalResult = result.total,
+                    breakdown = result.breakdown,
+                    history = listOf(newHistoryItem) + _internalState.value.history
+                )
+            }
         }
     }
 }

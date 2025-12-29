@@ -34,6 +34,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -72,6 +74,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.db.GameSession
 import com.johnz.diceroller.ui.settings.SettingsScreen
 import com.johnz.diceroller.ui.theme.DiceRollerTheme
 import com.google.android.gms.ads.MobileAds
@@ -124,6 +127,30 @@ val HistoryIcon: ImageVector = ImageVector.Builder(
         lineToRelative(-3.5f, -2.08f)
         verticalLineTo(8.0f)
         horizontalLineTo(12.0f)
+        close()
+    }
+}.build()
+
+// Custom Folder Icon
+val FolderIcon: ImageVector = ImageVector.Builder(
+    name = "Folder",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(10.0f, 4.0f)
+        horizontalLineTo(4.0f)
+        curveTo(2.9f, 4.0f, 2.01f, 4.9f, 2.01f, 6.0f)
+        lineTo(2.0f, 18.0f)
+        curveTo(2.0f, 19.1f, 2.9f, 20.0f, 4.0f, 20.0f)
+        horizontalLineTo(20.0f)
+        curveTo(21.1f, 20.0f, 22.0f, 19.1f, 22.0f, 18.0f)
+        verticalLineTo(8.0f)
+        curveTo(22.0f, 6.9f, 21.1f, 6.0f, 20.0f, 6.0f)
+        horizontalLineTo(12.0f)
+        lineTo(10.0f, 4.0f)
         close()
     }
 }.build()
@@ -223,6 +250,13 @@ fun DiceAppWithNavigation() {
         }
         composable("history") {
             HistoryScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToSessions = { navController.navigate("sessions") },
+                viewModel = viewModel
+            )
+        }
+        composable("sessions") {
+            SessionsScreen(
                 onNavigateBack = { navController.popBackStack() },
                 viewModel = viewModel
             )
@@ -419,6 +453,9 @@ fun DiceScreen(
     }
 }
 
+// ... DiceDisplay, DiceShapeRenderer, ExplosionEffect, DiceSelector, CustomFormulaInput, InteractiveDiceControls, ControlGroup ...
+// Assuming these are unchanged from previous steps, I will keep them but focus on HistoryScreen and adding SessionsScreen
+
 @Composable
 fun DiceDisplay(uiState: DiceUiState) {
     val baseColor = when(uiState.selectedDice) {
@@ -500,7 +537,6 @@ fun DiceDisplay(uiState: DiceUiState) {
     }
 
     if (!uiState.isRolling && uiState.breakdown.isNotEmpty()) {
-        // Show details for ALL dice types if breakdown is available (e.g. 2d6+3)
         Text(
             text = "Details: ${uiState.breakdown}",
             style = MaterialTheme.typography.titleMedium,
@@ -953,6 +989,7 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
         }
 
         if (style == DiceStyle.REALISTIC_3D) {
+            // ... Realistic 3D implementation ...
             drawCircle(color = Color.Black.copy(alpha = 0.2f), radius = radius * 1.1f, center = Offset(cx + 15f, cy + 25f))
             val radialGradient = Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.8f), color, color.copy(alpha = 0.8f), Color.Black.copy(alpha = 0.6f)), center = Offset(cx - radius * 0.3f, cy - radius * 0.3f), radius = radius * 1.8f)
             when (type) {
@@ -970,7 +1007,6 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
     }
 }
 
-// ... ExplosionEffect ...
 @Composable
 fun ExplosionEffect(trigger: Long) {
     if (trigger == 0L) return
@@ -996,7 +1032,6 @@ fun ExplosionEffect(trigger: Long) {
 }
 data class Particle(val id: Int, val angle: Double, val speed: Float, val color: Color, val size: Float)
 
-// ... DiceSelector ...
 @Composable
 fun DiceSelector(uiState: DiceUiState, onSelect: (DiceType) -> Unit) {
     if (uiState.visibleDiceTypes.isEmpty()) return
@@ -1023,7 +1058,6 @@ fun DiceSelector(uiState: DiceUiState, onSelect: (DiceType) -> Unit) {
     }
 }
 
-// ... CustomFormulaInput ...
 @Composable
 fun CustomFormulaInput(value: String, onValueChange: (String) -> Unit, onDone: () -> Unit) {
     val focusManager = LocalFocusManager.current
@@ -1037,7 +1071,6 @@ fun CustomFormulaInput(value: String, onValueChange: (String) -> Unit, onDone: (
     )
 }
 
-// NEW: Interactive Dice Controls
 @Composable
 fun InteractiveDiceControls(
     diceCount: Int,
@@ -1137,6 +1170,7 @@ fun ControlGroup(
 @Composable
 fun HistoryScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToSessions: () -> Unit,
     viewModel: DiceViewModel
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -1149,30 +1183,92 @@ fun HistoryScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    TextButton(onClick = onNavigateToSessions) {
+                        // Use our custom defined FolderIcon here
+                        Icon(imageVector = FolderIcon, contentDescription = null, tint = CartoonColors.Outline)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Saved Games", color = CartoonColors.Outline)
+                    }
                 }
             )
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(uiState.history) { item ->
-                HistoryItemCard(item)
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { viewModel.clearCurrentHistory() },
+                containerColor = CartoonColors.Red,
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Clear History")
             }
-            if (uiState.history.isEmpty()) {
-                item {
-                    Text(
-                        text = "No rolls yet.",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(32.dp),
-                        textAlign = TextAlign.Center,
-                        color = Color.Gray
-                    )
+        },
+        floatingActionButtonPosition = FabPosition.Center
+    ) { padding ->
+        Column(modifier = Modifier.padding(padding)) {
+            // Current Session Indicator
+            if (uiState.activeSession != null) {
+                Surface(
+                    color = CartoonColors.Blue.copy(alpha = 0.2f),
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Playing: ${uiState.activeSession!!.name}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { viewModel.endCurrentSession() }) {
+                            Text("Stop")
+                        }
+                    }
+                }
+            } else {
+                Surface(
+                    color = Color.LightGray.copy(alpha = 0.2f),
+                    modifier = Modifier.fillMaxWidth().padding(8.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Playing: Quick Play (Not Saved)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onNavigateToSessions) {
+                            Text("Save / Load")
+                        }
+                    }
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(uiState.history) { item ->
+                    HistoryItemCard(item)
+                }
+                if (uiState.history.isEmpty()) {
+                    item {
+                        Text(
+                            text = "No rolls yet.",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            textAlign = TextAlign.Center,
+                            color = Color.Gray
+                        )
+                    }
                 }
             }
         }
@@ -1211,4 +1307,171 @@ fun HistoryItemCard(item: RollHistoryItem) {
             )
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SessionsScreen(
+    onNavigateBack: () -> Unit,
+    viewModel: DiceViewModel
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    var showCreateDialog by remember { mutableStateOf(false) }
+
+    if (showCreateDialog) {
+        CreateSessionDialog(
+            onDismiss = { showCreateDialog = false },
+            onConfirm = { name ->
+                viewModel.startNewSession(name)
+                showCreateDialog = false
+                onNavigateBack() // Go back to history or stay here? User might want to verify.
+                // Actually, flow: Open Sessions -> Create -> (Session Starts) -> Maybe go back to DiceScreen?
+                // Let's go back.
+            }
+        )
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Saved Games") },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showCreateDialog = true }) {
+                        Icon(Icons.Default.Add, contentDescription = "New Game")
+                    }
+                }
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showCreateDialog = true },
+                containerColor = CartoonColors.Blue,
+                contentColor = Color.White
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "New Game")
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (uiState.savedSessions.isEmpty()) {
+                item {
+                    Text(
+                        text = "No saved games found. Start a new one!",
+                        modifier = Modifier.fillMaxWidth().padding(32.dp),
+                        textAlign = TextAlign.Center,
+                        color = Color.Gray
+                    )
+                }
+            }
+            
+            items(uiState.savedSessions) { session ->
+                SessionItemCard(
+                    session = session,
+                    isActive = session.id == uiState.activeSession?.id,
+                    onClick = {
+                        viewModel.resumeSession(session)
+                        onNavigateBack()
+                    },
+                    onDelete = {
+                        viewModel.deleteSession(session)
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun SessionItemCard(
+    session: GameSession,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) CartoonColors.Blue.copy(alpha = 0.1f) else Color.White
+        ),
+        border = if (isActive) androidx.compose.foundation.BorderStroke(2.dp, CartoonColors.Blue) else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = session.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Last played: ${java.text.SimpleDateFormat("MMM dd, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(session.lastPlayedAt))}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.Gray
+                )
+            }
+            
+            if (isActive) {
+                Text(
+                    text = "Active",
+                    color = CartoonColors.Blue,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
+            }
+            
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateSessionDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Game Session") },
+        text = {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Session Name") },
+                singleLine = true
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (name.isNotBlank()) onConfirm(name) },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

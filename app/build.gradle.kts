@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -37,6 +38,21 @@ android {
     buildFeatures {
         compose = true
     }
+
+    applicationVariants.all {
+        if (buildType.name == "release") {
+            outputs.all {
+                val output = this as? com.android.build.gradle.api.ApkVariantOutput
+                if (output != null) {
+                    val vName = versionName
+                    val vCode = versionCode
+                    // Note: This configures the APK output filename. 
+                    // Using .apk extension as this block handles APKs, not AABs.
+                    output.outputFileName = "dice-roller-v${vName}(${vCode}).apk"
+                }
+            }
+        }
+    }
 }
 
 dependencies {
@@ -59,6 +75,11 @@ dependencies {
     // AdMob
     implementation("com.google.android.gms:play-services-ads:23.3.0")
 
+    // Room
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
+
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -66,4 +87,17 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+tasks.matching { it.name == "bundleRelease" }.configureEach {
+    doLast {
+        val outDir = file("$buildDir/outputs/bundle/release")
+        val aab = outDir.listFiles()?.firstOrNull { it.extension == "aab" }
+        if (aab != null) {
+            val vName = android.defaultConfig.versionName
+            val vCode = android.defaultConfig.versionCode
+            val newName = "dice-roller-v${vName}(${vCode}).aab"
+            aab.renameTo(File(outDir, newName))
+        }
+    }
 }
