@@ -7,8 +7,10 @@ import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.RollData
 import com.johnz.diceroller.data.SettingsRepository
+import com.johnz.diceroller.data.db.ActionCard
 import com.johnz.diceroller.data.db.AppDatabase
 import com.johnz.diceroller.data.db.GameSession
+import com.johnz.diceroller.data.db.RollMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,13 +32,16 @@ data class DiceUiState(
     val finalResult: Int = 1,
     val breakdown: String = "",
     val isRolling: Boolean = false,
-    val selectedDice: DiceType = DiceType.D20,
+    
+    // New Action Card State
+    val selectedActionCard: ActionCard? = null,
+    val visibleActionCards: List<ActionCard> = emptyList(),
+
     val customFormula: String = "",
-    val visibleDiceTypes: List<DiceType> = emptyList(),
     val rollTrigger: Long = 0L,
     val diceStyle: DiceStyle = DiceStyle.CARTOON_25D,
     
-    // Interactive controls state (for standard dice)
+    // Interactive controls state (for standard mutable dice)
     val customDiceCount: Int = 1,
     val customModifier: Int = 0,
     
@@ -56,19 +61,31 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
 
     val uiState: StateFlow<DiceUiState> = combine(
         _internalState,
-        settingsRepository.visibleDiceFlow,
-        settingsRepository.customDiceVisibleFlow,
+        repository.allActionCards,
         settingsRepository.diceStyleFlow
-    ) { state, visibleFaces, isCustomVisible, currentStyle ->
-        val standardDice = DiceType.values().filter { visibleFaces.contains(it.faces) }
-        val allVisible = if (isCustomVisible) standardDice + DiceType.CUSTOM else standardDice
+    ) { state, allCards, currentStyle ->
         
-        // Ensure the selected dice remains valid, otherwise fallback
-        val newSelected = if (state.selectedDice in allVisible) state.selectedDice else allVisible.firstOrNull() ?: DiceType.D6
+        // Sort: System dice by faces, then User cards, then Custom Input (if treated as system)
+        val sortedCards = allCards.sortedWith(
+            compareBy<ActionCard> { 
+                if (it.visualType == DiceType.CUSTOM) 2 // Custom at end
+                else if (it.isSystem) 0 // System first
+                else 1 // User cards middle
+            }
+            .thenBy { it.visualType.faces }
+            .thenBy { it.name }
+        )
+
+        // Maintain selection if possible, else default to first
+        val newSelected = if (state.selectedActionCard != null) {
+            sortedCards.find { it.id == state.selectedActionCard.id && it.name == state.selectedActionCard.name } ?: sortedCards.firstOrNull()
+        } else {
+            sortedCards.firstOrNull()
+        }
 
         state.copy(
-            visibleDiceTypes = allVisible.sortedBy { if (it == DiceType.CUSTOM) Int.MAX_VALUE else it.faces },
-            selectedDice = newSelected,
+            visibleActionCards = sortedCards,
+            selectedActionCard = newSelected,
             diceStyle = currentStyle
         )
     }.stateIn(
@@ -82,16 +99,17 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
+            repository.initSystemCardsIfNeeded()
             repository.allSessions.collect { sessions ->
                 _internalState.value = _internalState.value.copy(savedSessions = sessions)
             }
         }
     }
 
-    fun selectDice(type: DiceType) {
-        // Reset interactive controls when switching dice type
+    fun selectActionCard(card: ActionCard) {
+        // Reset interactive controls when switching
         _internalState.value = _internalState.value.copy(
-            selectedDice = type,
+            selectedActionCard = card,
             displayedResult = "1",
             finalResult = 1,
             breakdown = "",
@@ -174,8 +192,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun rollDice() {
+    // Now accepts a roll mode (default Normal)
+    fun rollDice(rollMode: RollMode = RollMode.NORMAL) {
         if (_internalState.value.isRolling) return
+        
+        val currentState = uiState.value
+        val card = currentState.selectedActionCard ?: return
 
         rollJob?.cancel()
         rollJob = viewModelScope.launch {
@@ -185,27 +207,23 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 rollTrigger = triggerTime
             )
 
-            // Get current validated state from uiState
-            val currentState = uiState.value
-            val currentType = currentState.selectedDice
-            
             // Determine formula based on type
-            val formula = if (currentType == DiceType.CUSTOM) {
-                // Custom Dice always uses the text formula input
+            val formula = if (card.visualType == DiceType.CUSTOM) {
                 currentState.customFormula
-            } else {
+            } else if (card.isMutable) {
                 // Standard Dice (D4, D6...) always use the interactive controls
                 val count = currentState.customDiceCount
                 val mod = currentState.customModifier
-                val faces = currentType.faces
-                val sign = if (mod >= 0) "+" else "" // Negative numbers carry their own sign
-                
-                // e.g., "2d6+3" or "1d20-2"
+                val faces = card.visualType.faces
+                val sign = if (mod >= 0) "+" else "" 
                 "${count}d${faces}${if (mod != 0) "$sign$mod" else ""}"
+            } else {
+                // User Action Card (fixed formula)
+                card.formula
             }
             
             // 1. Parse and calculate the final result
-            val result = DiceParser.parseAndRoll(formula)
+            val result = DiceParser.parseAndRoll(formula, rollMode)
 
             val animationDuration = 500L
             val updateInterval = 60L
@@ -214,24 +232,17 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             var lastDisplayValueStr = _internalState.value.displayedResult
 
             while (System.currentTimeMillis() < startTime + animationDuration) {
-                // 2. Animation Logic
+                // 2. Animation Logic (Simplified for now, just random numbers from result rolls or 1)
                 var nextValue = 0
                 if (result.rolls.isNotEmpty()) {
-                    nextValue = result.rolls.sumOf { rollItem ->
-                        rollItem.die.roll() * rollItem.coefficient
-                    }
+                    // Just pick a random value related to max possible for animation
+                    // Or simulate rolling.
+                    nextValue = kotlin.random.Random.nextInt(1, result.maxTotal + 1)
                 } else {
                     nextValue = 1
                 }
-                
-                if (nextValue.toString() == lastDisplayValueStr && result.maxTotal > 1) {
-                     if (result.rolls.isNotEmpty()) {
-                        nextValue = result.rolls.sumOf { it.die.roll() * it.coefficient }
-                    }
-                }
 
-                lastDisplayValueStr = nextValue.toString()
-                _internalState.value = _internalState.value.copy(displayedResult = lastDisplayValueStr)
+                _internalState.value = _internalState.value.copy(displayedResult = nextValue.toString())
                 delay(updateInterval)
             }
 
@@ -245,7 +256,6 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             
             if (activeSession != null) {
                 repository.addRoll(activeSession.id, result.total.toString(), result.breakdown)
-                // history update will come via flow
                 _internalState.value = _internalState.value.copy(
                     isRolling = false,
                     displayedResult = result.total.toString(),
@@ -261,6 +271,27 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     history = listOf(newHistoryItem) + _internalState.value.history
                 )
             }
+        }
+    }
+    
+    // Manage Custom Action Cards
+    fun addActionCard(name: String, formula: String, visual: DiceType) {
+        viewModelScope.launch {
+            repository.insertActionCard(
+                ActionCard(
+                    name = name,
+                    formula = formula,
+                    visualType = visual,
+                    isSystem = false,
+                    isMutable = false
+                )
+            )
+        }
+    }
+    
+    fun deleteActionCard(card: ActionCard) {
+        viewModelScope.launch {
+            repository.deleteActionCard(card)
         }
     }
 }

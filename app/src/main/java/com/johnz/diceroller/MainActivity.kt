@@ -74,7 +74,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.db.ActionCard
 import com.johnz.diceroller.data.db.GameSession
+import com.johnz.diceroller.data.db.RollMode
 import com.johnz.diceroller.ui.settings.SettingsScreen
 import com.johnz.diceroller.ui.theme.DiceRollerTheme
 import com.google.android.gms.ads.MobileAds
@@ -214,9 +216,6 @@ fun DiceAppWithNavigation() {
     // Initialize SoundManager
     val soundManager = remember { SoundManager(context) }
     
-    // Initialize AdMobHelper
-    // val adMobHelper = remember { AdMobHelper(context).apply { loadRewardedAd() } } // Commented out unused AdMobHelper
-
     // Release SoundPool when the app is destroyed
     DisposableEffect(Unit) {
         onDispose {
@@ -240,7 +239,6 @@ fun DiceAppWithNavigation() {
             )
         }
         composable("donate") {
-            val activity = LocalContext.current as? Activity
             DonateScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onWatchAd = {
@@ -373,7 +371,7 @@ fun DiceScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        containerColor = Color(0xFFF7F9FC), // Light minimalist background
+        containerColor = Color(0xFFF7F9FC),
         topBar = {
             TopAppBar(
                 title = {
@@ -411,7 +409,6 @@ fun DiceScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
             
-            // Effect Layer: Particles
             ExplosionEffect(trigger = uiState.rollTrigger)
 
             Column(
@@ -424,35 +421,47 @@ fun DiceScreen(
                     ) {
                         if (!uiState.isRolling) {
                             view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                            viewModel.rollDice()
+                            viewModel.rollDice(RollMode.NORMAL)
                         }
                     },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.weight(1f))
 
-                DiceDisplay(uiState = uiState)
+                // Display selected action card or fallback
+                val currentCard = uiState.selectedActionCard
+                if (currentCard != null) {
+                    DiceDisplay(uiState = uiState, card = currentCard)
+                }
 
                 Spacer(modifier = Modifier.weight(1f))
 
-                DiceSelector(uiState = uiState, onSelect = { viewModel.selectDice(it) })
+                DiceSelector(
+                    uiState = uiState, 
+                    onSelect = { viewModel.selectActionCard(it) }
+                )
 
-                // --- UI CHANGE: Logic for displaying controls ---
-                if (uiState.selectedDice == DiceType.CUSTOM) {
-                    // Custom always shows Text Input
-                    CustomFormulaInput(
-                        value = uiState.customFormula,
-                        onValueChange = { viewModel.updateCustomFormula(it) },
-                        onDone = { viewModel.rollDice() }
-                    )
-                } else {
-                    // Standard Dice always show Interactive Controls
-                    InteractiveDiceControls(
-                        diceCount = uiState.customDiceCount,
-                        modifier = uiState.customModifier,
-                        onCountChange = { viewModel.changeCustomDiceCount(it) },
-                        onModifierChange = { viewModel.changeCustomModifier(it) }
-                    )
+                // Controls Area
+                if (currentCard != null) {
+                    if (currentCard.visualType == DiceType.CUSTOM) {
+                        CustomFormulaInput(
+                            value = uiState.customFormula,
+                            onValueChange = { viewModel.updateCustomFormula(it) },
+                            onDone = { viewModel.rollDice(RollMode.NORMAL) }
+                        )
+                    } else if (currentCard.isMutable) {
+                        InteractiveDiceControls(
+                            diceCount = uiState.customDiceCount,
+                            modifier = uiState.customModifier,
+                            onCountChange = { viewModel.changeCustomDiceCount(it) },
+                            onModifierChange = { viewModel.changeCustomModifier(it) }
+                        )
+                    } else {
+                        // Immutable Action Cards (Custom) show Adv/Dis
+                        ActionCardControls(
+                            onRoll = { mode -> viewModel.rollDice(mode) }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -461,12 +470,41 @@ fun DiceScreen(
     }
 }
 
-// ... DiceDisplay, DiceShapeRenderer, ExplosionEffect, DiceSelector, CustomFormulaInput, InteractiveDiceControls, ControlGroup ...
-// Assuming these are unchanged from previous steps, I will keep them but focus on HistoryScreen and adding SessionsScreen
+@Composable
+fun ActionCardControls(onRoll: (RollMode) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        OutlinedButton(
+            onClick = { onRoll(RollMode.DISADVANTAGE) },
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = CartoonColors.Red)
+        ) {
+            Text("Disadvantage")
+        }
+        
+        Button(
+            onClick = { onRoll(RollMode.NORMAL) },
+            colors = ButtonDefaults.buttonColors(containerColor = CartoonColors.Blue)
+        ) {
+            Text("Roll")
+        }
+
+        OutlinedButton(
+            onClick = { onRoll(RollMode.ADVANTAGE) },
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = CartoonColors.Green)
+        ) {
+            Text("Advantage")
+        }
+    }
+}
 
 @Composable
-fun DiceDisplay(uiState: DiceUiState) {
-    val baseColor = when(uiState.selectedDice) {
+fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
+    val baseColor = when(card.visualType) {
         DiceType.D4 -> CartoonColors.Red
         DiceType.D6 -> CartoonColors.Blue
         DiceType.D8 -> CartoonColors.Green
@@ -495,31 +533,24 @@ fun DiceDisplay(uiState: DiceUiState) {
         // Render dice based on selected style
         DiceShapeRenderer(
             style = uiState.diceStyle,
-            type = uiState.selectedDice,
+            type = card.visualType,
             color = baseColor
         )
 
-        val textOffset = if (uiState.selectedDice == DiceType.D4) {
-            Modifier.offset(x = 24.dp, y = 16.dp)
-        } else if (uiState.selectedDice == DiceType.D6) {
-             Modifier.offset(x = (-12).dp, y = 12.dp)
-        } else if (uiState.selectedDice == DiceType.D8) {
-             Modifier.offset(y = (-4).dp) 
-        } else if (uiState.selectedDice == DiceType.D10 ) {
-             Modifier.offset(y = (-12).dp) 
-        } else if (uiState.selectedDice == DiceType.D100) {
-            Modifier.offset(y = (0).dp)
-        } else if (uiState.selectedDice == DiceType.CUSTOM) {
-            Modifier.offset(y = (0).dp)
-        } else {
-            Modifier
+        // Adjust text offset logic based on dice shape
+        val textOffset = when(card.visualType) {
+            DiceType.D4 -> Modifier.offset(x = 24.dp, y = 16.dp)
+            DiceType.D6 -> Modifier.offset(x = (-12).dp, y = 12.dp)
+            DiceType.D8 -> Modifier.offset(y = (-4).dp)
+            DiceType.D10 -> Modifier.offset(y = (-12).dp)
+            else -> Modifier
         }
 
         Box(
             contentAlignment = Alignment.Center,
             modifier = textOffset
         ) {
-            // Shadow text only for Cartoon/3D styles
+            // Shadow text
             if (uiState.diceStyle != DiceStyle.FLAT_2D) {
                 Text(
                     text = uiState.displayedResult,
@@ -544,13 +575,24 @@ fun DiceDisplay(uiState: DiceUiState) {
         }
     }
 
-    if (!uiState.isRolling && uiState.breakdown.isNotEmpty()) {
-        Text(
-            text = "Details: ${uiState.breakdown}",
-            style = MaterialTheme.typography.titleMedium,
-            color = CartoonColors.Outline,
-            modifier = Modifier.padding(top = 16.dp)
-        )
+    if (!uiState.isRolling) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 16.dp)) {
+            // Show Card Name if it's a custom card (or system card name)
+            Text(
+                text = card.name,
+                style = MaterialTheme.typography.headlineSmall,
+                color = CartoonColors.Outline,
+                fontWeight = FontWeight.Bold
+            )
+            if (uiState.breakdown.isNotEmpty()) {
+                Text(
+                    text = uiState.breakdown,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
     }
 }
 
@@ -1038,26 +1080,28 @@ fun ExplosionEffect(trigger: Long) {
 data class Particle(val id: Int, val angle: Double, val speed: Float, val color: Color, val size: Float)
 
 @Composable
-fun DiceSelector(uiState: DiceUiState, onSelect: (DiceType) -> Unit) {
-    if (uiState.visibleDiceTypes.isEmpty()) return
+fun DiceSelector(uiState: DiceUiState, onSelect: (ActionCard) -> Unit) {
+    if (uiState.visibleActionCards.isEmpty()) return
     val listState = rememberLazyListState()
-    LaunchedEffect(uiState.selectedDice) {
-        val index = uiState.visibleDiceTypes.indexOf(uiState.selectedDice)
+    LaunchedEffect(uiState.selectedActionCard) {
+        val index = uiState.visibleActionCards.indexOfFirst { 
+            it.id == uiState.selectedActionCard?.id && it.name == uiState.selectedActionCard?.name 
+        }
         if (index >= 0) listState.animateScrollToItem(index)
     }
     LazyRow(
         state = listState, modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
         horizontalArrangement = Arrangement.Center, contentPadding = PaddingValues(horizontal = 16.dp)
     ) {
-        items(uiState.visibleDiceTypes) { type ->
-            val isSelected = uiState.selectedDice == type
+        items(uiState.visibleActionCards) { card ->
+            val isSelected = uiState.selectedActionCard?.id == card.id && uiState.selectedActionCard?.name == card.name
             val backgroundColor by animateColorAsState(if (isSelected) CartoonColors.Outline else Color.Transparent, label = "bgColor")
             val contentColor by animateColorAsState(if (isSelected) Color.White else CartoonColors.Outline.copy(alpha = 0.5f), label = "contentColor")
             Box(
-                modifier = Modifier.padding(horizontal = 4.dp).clip(CircleShape).background(backgroundColor).clickable { onSelect(type) }.padding(horizontal = 20.dp, vertical = 10.dp),
+                modifier = Modifier.padding(horizontal = 4.dp).clip(CircleShape).background(backgroundColor).clickable { onSelect(card) }.padding(horizontal = 20.dp, vertical = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = type.label, fontWeight = FontWeight.Bold, color = contentColor, fontSize = 16.sp)
+                Text(text = card.name, fontWeight = FontWeight.Bold, color = contentColor, fontSize = 16.sp)
             }
         }
     }

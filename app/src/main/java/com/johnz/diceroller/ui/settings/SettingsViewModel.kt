@@ -4,8 +4,12 @@ import android.app.Application
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.DiceStyle
+import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.SettingsRepository
+import com.johnz.diceroller.data.db.ActionCard
+import com.johnz.diceroller.data.db.AppDatabase
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,26 +20,20 @@ import kotlinx.coroutines.launch
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepository = SettingsRepository(application)
-
-    val visibleDice: StateFlow<Set<Int>> = settingsRepository.visibleDiceFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = SettingsRepository.DEFAULT_DICE_FACES.map { it.toInt() }.toSet()
-        )
-
-    val isCustomDiceVisible: StateFlow<Boolean> = settingsRepository.customDiceVisibleFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = true
-        )
+    private val gameRepository = GameRepository(AppDatabase.getDatabase(application))
 
     val diceStyle: StateFlow<DiceStyle> = settingsRepository.diceStyleFlow
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = DiceStyle.CARTOON_25D
+        )
+        
+    val allActionCards: StateFlow<List<ActionCard>> = gameRepository.allActionCards
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
         )
         
     private val _isSystemHapticsEnabled = MutableStateFlow(true)
@@ -57,31 +55,29 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun onDiceVisibilityChanged(face: Int, isVisible: Boolean) {
-        viewModelScope.launch {
-            val currentVisible = visibleDice.value.toMutableSet()
-            if (isVisible) {
-                currentVisible.add(face)
-            } else {
-                if (currentVisible.size > 1 || isCustomDiceVisible.value) {
-                    currentVisible.remove(face)
-                }
-            }
-            settingsRepository.updateVisibleDice(currentVisible)
-        }
-    }
-
-    fun onCustomDiceVisibilityChanged(isVisible: Boolean) {
-        viewModelScope.launch {
-            if (visibleDice.value.isNotEmpty() || isVisible) {
-                settingsRepository.updateCustomDiceVisibility(isVisible)
-            }
-        }
-    }
-
     fun onDiceStyleChanged(style: DiceStyle) {
         viewModelScope.launch {
             settingsRepository.updateDiceStyle(style)
+        }
+    }
+    
+    fun addCustomActionCard(name: String, formula: String, visual: DiceType) {
+        viewModelScope.launch {
+            gameRepository.insertActionCard(
+                ActionCard(
+                    name = name,
+                    formula = formula,
+                    visualType = visual,
+                    isSystem = false,
+                    isMutable = false
+                )
+            )
+        }
+    }
+    
+    fun deleteActionCard(card: ActionCard) {
+        viewModelScope.launch {
+            gameRepository.deleteActionCard(card)
         }
     }
 }

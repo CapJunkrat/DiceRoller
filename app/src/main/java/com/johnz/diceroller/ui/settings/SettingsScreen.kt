@@ -5,21 +5,23 @@ import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -28,9 +30,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.DiceStyle
-
-private val ALL_CONFIGURABLE_DICE = listOf(4, 6, 8, 10, 12, 20, 100)
+import com.johnz.diceroller.data.db.ActionCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,13 +41,48 @@ fun SettingsScreen(
     onNavigateToDonate: () -> Unit,
     viewModel: SettingsViewModel = viewModel()
 ) {
-    val visibleDice by viewModel.visibleDice.collectAsState()
-    val isCustomVisible by viewModel.isCustomDiceVisible.collectAsState()
     val isSystemHapticsEnabled by viewModel.isSystemHapticsEnabled.collectAsState()
     val currentStyle by viewModel.diceStyle.collectAsState()
+    val allCards by viewModel.allActionCards.collectAsState()
     
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    
+    var showAddCardDialog by remember { mutableStateOf(false) }
+    var cardToDelete by remember { mutableStateOf<ActionCard?>(null) }
+
+    if (showAddCardDialog) {
+        CreateActionCardDialog(
+            onDismiss = { showAddCardDialog = false },
+            onConfirm = { name, formula, visual ->
+                viewModel.addCustomActionCard(name, formula, visual)
+                showAddCardDialog = false
+            }
+        )
+    }
+
+    if (cardToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { cardToDelete = null },
+            title = { Text("Delete Action Card?") },
+            text = { Text("Are you sure you want to delete '${cardToDelete?.name}'?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        cardToDelete?.let { viewModel.deleteActionCard(it) }
+                        cardToDelete = null
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { cardToDelete = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -73,8 +110,7 @@ fun SettingsScreen(
                 }
             )
         }
-    ) {
-        paddingValues ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -161,38 +197,43 @@ fun SettingsScreen(
 
             Divider(modifier = Modifier.padding(vertical = 16.dp))
 
-            // --- Custom Dice Configuration ---
+            // --- Action Cards Management ---
             Text(
-                text = "Custom Dice Settings",
+                text = "Action Cards",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
-
-             DiceVisibilityRow(
-                label = "Enable Custom Dice",
-                isVisible = isCustomVisible,
-                onCheckedChange = { isChecked ->
-                    viewModel.onCustomDiceVisibilityChanged(isChecked)
-                }
+            
+            // Sort: System cards first, then Custom cards
+            val sortedCards = allCards.sortedWith(
+                compareBy<ActionCard> { !it.isSystem } // false (System) < true (Custom)
+                .thenBy { it.id } // Stable sort for creation order
             )
-
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-            // --- Visible Standard Dice ---
-            Text(
-                text = "Visible Standard Dice",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            ALL_CONFIGURABLE_DICE.forEach { face ->
-                DiceVisibilityRow(
-                    label = "D$face",
-                    isVisible = visibleDice.contains(face),
-                    onCheckedChange = { isChecked ->
-                        viewModel.onDiceVisibilityChanged(face, isChecked)
-                    }
+            
+            if (sortedCards.isEmpty()) {
+                Text(
+                    text = "No cards available.",
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    color = Color.Gray
                 )
+            }
+            
+            // Use Column for items since we are inside a verticalScroll Column
+            Column {
+                sortedCards.forEach { card ->
+                    ActionCardRow(card, onDelete = { cardToDelete = card })
+                }
+            }
+            
+            Button(
+                onClick = { showAddCardDialog = true },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Create New Action Card")
             }
             
             Divider(modifier = Modifier.padding(vertical = 16.dp))
@@ -228,6 +269,82 @@ fun SettingsScreen(
 }
 
 @Composable
+fun ActionCardRow(card: ActionCard, onDelete: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = card.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(text = card.formula, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
+fun CreateActionCardDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, DiceType) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var formula by remember { mutableStateOf("") }
+    var selectedVisual by remember { mutableStateOf(DiceType.D20) }
+    
+    val canSubmit = name.isNotBlank() && formula.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("New Action Card") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name, 
+                    onValueChange = { name = it }, 
+                    label = { Text("Name (e.g. Greatsword)") },
+                    singleLine = true
+                )
+                OutlinedTextField(
+                    value = formula, 
+                    onValueChange = { formula = it }, 
+                    label = { Text("Formula (e.g. 2d6 + 3)") },
+                    singleLine = true
+                )
+                
+                Text("Icon / Visual:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(DiceType.values().filter { it.faces > 0 }) { type ->
+                        val isSelected = selectedVisual == type
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedVisual = type },
+                            label = { Text(type.label) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { if (canSubmit) onConfirm(name, formula, selectedVisual) },
+                enabled = canSubmit
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
 private fun StyleChip(
     label: String,
     isSelected: Boolean,
@@ -260,31 +377,6 @@ private fun StyleChip(
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
             color = contentColor,
             textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun DiceVisibilityRow(
-    label: String,
-    isVisible: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!isVisible) }
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Switch(
-            checked = isVisible,
-            onCheckedChange = onCheckedChange
         )
     }
 }

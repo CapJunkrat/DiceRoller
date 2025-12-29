@@ -1,5 +1,7 @@
 package com.johnz.diceroller
 
+import com.johnz.diceroller.data.db.RollMode
+
 /**
  * Utility class to parse and roll dice formulas.
  * Supports standard notation like "2d20 + 5", "1d8 - 1", etc.
@@ -9,8 +11,28 @@ object DiceParser {
     /**
      * Parses a formula string and executes the roll.
      * Example formulas: "d20", "2d6+3", "1d100 - 5".
+     * Supports Advantage/Disadvantage by rolling the entire formula twice.
      */
-    fun parseAndRoll(formula: String): RollResult {
+    fun parseAndRoll(formula: String, mode: RollMode = RollMode.NORMAL): RollResult {
+        if (mode == RollMode.NORMAL) {
+            return parseAndRollInternal(formula)
+        }
+
+        val result1 = parseAndRollInternal(formula)
+        val result2 = parseAndRollInternal(formula)
+
+        val useFirst = if (mode == RollMode.ADVANTAGE) result1.total >= result2.total else result1.total <= result2.total
+        val finalResult = if (useFirst) result1 else result2
+        
+        // Construct a breakdown that explains the Advantage/Disadvantage
+        // e.g., "Adv: {15, 8} -> 15 (Details...)"
+        val modeLabel = if (mode == RollMode.ADVANTAGE) "Adv" else "Dis"
+        val newBreakdown = "$modeLabel: {${result1.total}, ${result2.total}} -> ${finalResult.total} | ${finalResult.breakdown}"
+
+        return finalResult.copy(breakdown = newBreakdown)
+    }
+
+    private fun parseAndRollInternal(formula: String): RollResult {
         // Normalize input
         val input = formula.replace("\\s".toRegex(), "").lowercase()
         if (input.isEmpty()) return RollResult(0, emptyList(), 0, "Empty")
