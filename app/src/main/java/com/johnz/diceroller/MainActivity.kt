@@ -376,7 +376,15 @@ fun DiceScreen(
         containerColor = Color(0xFFF7F9FC), // Light minimalist background
         topBar = {
             TopAppBar(
-                title = { },
+                title = {
+                    uiState.activeSession?.let { session ->
+                        Text(
+                            text = "Playing: ${session.name}",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = CartoonColors.Outline
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateToSettings) {
                         Icon(
