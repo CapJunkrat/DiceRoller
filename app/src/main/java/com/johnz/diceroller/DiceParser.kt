@@ -24,12 +24,23 @@ object DiceParser {
         val useFirst = if (mode == RollMode.ADVANTAGE) result1.total >= result2.total else result1.total <= result2.total
         val finalResult = if (useFirst) result1 else result2
         
-        // Construct a breakdown that explains the Advantage/Disadvantage
-        // e.g., "Adv: {15, 8} -> 15 (Details...)"
+        val raw1 = getRawDiceTotal(result1)
+        val raw2 = getRawDiceTotal(result2)
+        
+        val r1Str = if (useFirst) "[$raw1]" else "$raw1"
+        val r2Str = if (!useFirst) "[$raw2]" else "$raw2"
+        
         val modeLabel = if (mode == RollMode.ADVANTAGE) "Adv" else "Dis"
-        val newBreakdown = "$modeLabel: {${result1.total}, ${result2.total}} -> ${finalResult.total} | ${finalResult.breakdown}"
+        // Format: Adv: [15], 4 -> 1d20(15)+4 | 19
+        val newBreakdown = "$modeLabel: $r1Str, $r2Str -> ${finalResult.breakdown} | ${finalResult.total}"
 
         return finalResult.copy(breakdown = newBreakdown)
+    }
+
+    private fun getRawDiceTotal(result: RollResult): Int {
+        return result.rolls
+            .filter { it.die !is ConstantDie }
+            .sumOf { it.value * it.coefficient }
     }
 
     private fun parseAndRollInternal(formula: String): RollResult {
