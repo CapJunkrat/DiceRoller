@@ -188,7 +188,7 @@ fun DiceAppWithNavigation() {
     val soundManager = remember { SoundManager(context) }
     
     // Initialize AdMobHelper
-    val adMobHelper = remember { AdMobHelper(context).apply { loadRewardedAd() } }
+    // val adMobHelper = remember { AdMobHelper(context).apply { loadRewardedAd() } } // Commented out unused AdMobHelper
 
     // Release SoundPool when the app is destroyed
     DisposableEffect(Unit) {
@@ -217,16 +217,7 @@ fun DiceAppWithNavigation() {
             DonateScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onWatchAd = {
-                    activity?.let { act ->
-                        if (adMobHelper.isAdReady()) {
-                            adMobHelper.showRewardedAd(act) { amount, type ->
-                                Toast.makeText(act, "Thanks for supporting! You earned $amount $type!", Toast.LENGTH_LONG).show()
-                            }
-                        } else {
-                            Toast.makeText(act, "Ad is not ready yet. Please try again in a moment.", Toast.LENGTH_SHORT).show()
-                            adMobHelper.loadRewardedAd()
-                        }
-                    }
+                    Toast.makeText(context, "To be added", Toast.LENGTH_SHORT).show()
                 }
             )
         }
