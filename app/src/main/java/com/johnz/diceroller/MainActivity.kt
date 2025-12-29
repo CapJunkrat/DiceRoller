@@ -87,12 +87,13 @@ import kotlin.random.Random
 // --- Cartoon Color Palette ---
 object CartoonColors {
     val Red = Color(0xFFFF6B6B)
-    val Blue = Color(0xFF4ECDC4)
+    val Blue = Color(0xFF4ECDC4) // Used for D6, now ADV
     val Yellow = Color(0xFFFFD93D)
     val Purple = Color(0xFF6C5CE7)
     val Green = Color(0xFF95E1D3)
     val Orange = Color(0xFFFF8E71)
     val Pink = Color(0xFFA29BFE)
+    val TrueBlue = Color(0xFF54A0FF) // New Blue for STD
     val Outline = Color(0xFF2D3436) // Dark Charcoal for borders
     val Shadow = Color(0xFF000000).copy(alpha = 0.2f)
 }
@@ -421,7 +422,7 @@ fun DiceScreen(
                     ) {
                         if (!uiState.isRolling) {
                             view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                            viewModel.rollDice(RollMode.NORMAL)
+                            viewModel.rollDice()
                         }
                     },
                 horizontalAlignment = Alignment.CenterHorizontally
@@ -447,7 +448,7 @@ fun DiceScreen(
                         CustomFormulaInput(
                             value = uiState.customFormula,
                             onValueChange = { viewModel.updateCustomFormula(it) },
-                            onDone = { viewModel.rollDice(RollMode.NORMAL) }
+                            onDone = { viewModel.rollDice() }
                         )
                     } else if (currentCard.isMutable) {
                         InteractiveDiceControls(
@@ -459,7 +460,8 @@ fun DiceScreen(
                     } else {
                         // Immutable Action Cards (Custom) show Adv/Dis
                         ActionCardControls(
-                            onRoll = { mode -> viewModel.rollDice(mode) }
+                            currentMode = uiState.selectedRollMode,
+                            onModeSelect = { viewModel.selectRollMode(it) }
                         )
                     }
                 }
@@ -471,7 +473,10 @@ fun DiceScreen(
 }
 
 @Composable
-fun ActionCardControls(onRoll: (RollMode) -> Unit) {
+fun ActionCardControls(
+    currentMode: RollMode,
+    onModeSelect: (RollMode) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -479,25 +484,40 @@ fun ActionCardControls(onRoll: (RollMode) -> Unit) {
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        OutlinedButton(
-            onClick = { onRoll(RollMode.DISADVANTAGE) },
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = CartoonColors.Red)
+        // Disadvantage
+        Button(
+            onClick = { onModeSelect(RollMode.DISADVANTAGE) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (currentMode == RollMode.DISADVANTAGE) CartoonColors.Red else Color.Transparent,
+                contentColor = if (currentMode == RollMode.DISADVANTAGE) Color.White else CartoonColors.Red
+            ),
+            border = if (currentMode != RollMode.DISADVANTAGE) androidx.compose.foundation.BorderStroke(1.dp, CartoonColors.Red) else null
         ) {
-            Text("Disadvantage")
+            Text("DIS")
         }
         
+        // Standard
         Button(
-            onClick = { onRoll(RollMode.NORMAL) },
-            colors = ButtonDefaults.buttonColors(containerColor = CartoonColors.Blue)
+            onClick = { onModeSelect(RollMode.NORMAL) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (currentMode == RollMode.NORMAL) CartoonColors.TrueBlue else Color.Transparent,
+                contentColor = if (currentMode == RollMode.NORMAL) Color.White else CartoonColors.TrueBlue
+            ),
+            border = if (currentMode != RollMode.NORMAL) androidx.compose.foundation.BorderStroke(1.dp, CartoonColors.TrueBlue) else null
         ) {
-            Text("Roll")
+            Text("STD")
         }
 
-        OutlinedButton(
-            onClick = { onRoll(RollMode.ADVANTAGE) },
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = CartoonColors.Green)
+        // Advantage
+        Button(
+            onClick = { onModeSelect(RollMode.ADVANTAGE) },
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (currentMode == RollMode.ADVANTAGE) CartoonColors.Blue else Color.Transparent,
+                contentColor = if (currentMode == RollMode.ADVANTAGE) Color.White else CartoonColors.Blue
+            ),
+            border = if (currentMode != RollMode.ADVANTAGE) androidx.compose.foundation.BorderStroke(1.dp, CartoonColors.Blue) else null
         ) {
-            Text("Advantage")
+            Text("ADV")
         }
     }
 }
@@ -595,6 +615,8 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         }
     }
 }
+
+// ... (DiceShapeRenderer, ExplosionEffect, DiceSelector, CustomFormulaInput, InteractiveDiceControls, ControlGroup, HistoryScreen, SessionsScreen, etc. remain unchanged)
 
 @Composable
 fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {

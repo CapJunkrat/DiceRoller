@@ -5,6 +5,7 @@ import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -54,8 +55,8 @@ fun SettingsScreen(
     if (showAddCardDialog) {
         CreateActionCardDialog(
             onDismiss = { showAddCardDialog = false },
-            onConfirm = { name, formula, visual ->
-                viewModel.addCustomActionCard(name, formula, visual)
+            onConfirm = { name, formula, visual, isMutable ->
+                viewModel.addCustomActionCard(name, formula, visual, isMutable)
                 showAddCardDialog = false
             }
         )
@@ -289,11 +290,12 @@ fun ActionCardRow(card: ActionCard, onDelete: () -> Unit) {
 @Composable
 fun CreateActionCardDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, String, DiceType) -> Unit
+    onConfirm: (String, String, DiceType, Boolean) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var formula by remember { mutableStateOf("") }
     var selectedVisual by remember { mutableStateOf(DiceType.D20) }
+    var isMutable by remember { mutableStateOf(false) }
     
     val canSubmit = name.isNotBlank() && formula.isNotBlank()
 
@@ -315,6 +317,14 @@ fun CreateActionCardDialog(
                     singleLine = true
                 )
                 
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { isMutable = !isMutable }
+                ) {
+                    Checkbox(checked = isMutable, onCheckedChange = { isMutable = it })
+                    Text("Interactive Controls (Count/Modifier)")
+                }
+                
                 Text("Icon / Visual:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(DiceType.values().filter { it.faces > 0 }) { type ->
@@ -330,7 +340,7 @@ fun CreateActionCardDialog(
         },
         confirmButton = {
             Button(
-                onClick = { if (canSubmit) onConfirm(name, formula, selectedVisual) },
+                onClick = { if (canSubmit) onConfirm(name, formula, selectedVisual, isMutable) },
                 enabled = canSubmit
             ) {
                 Text("Create")

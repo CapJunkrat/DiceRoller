@@ -35,6 +35,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+    
+    // We keep this for now to support the "Custom Input" visibility if needed, 
+    // although the UI switch for standard dice visibility is gone.
+    val isCustomDiceVisible: StateFlow<Boolean> = settingsRepository.customDiceVisibleFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true
+        )
         
     private val _isSystemHapticsEnabled = MutableStateFlow(true)
     val isSystemHapticsEnabled: StateFlow<Boolean> = _isSystemHapticsEnabled.asStateFlow()
@@ -55,13 +64,19 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun onCustomDiceVisibilityChanged(isVisible: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateCustomDiceVisibility(isVisible)
+        }
+    }
+
     fun onDiceStyleChanged(style: DiceStyle) {
         viewModelScope.launch {
             settingsRepository.updateDiceStyle(style)
         }
     }
     
-    fun addCustomActionCard(name: String, formula: String, visual: DiceType) {
+    fun addCustomActionCard(name: String, formula: String, visual: DiceType, isMutable: Boolean) {
         viewModelScope.launch {
             gameRepository.insertActionCard(
                 ActionCard(
@@ -69,7 +84,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     formula = formula,
                     visualType = visual,
                     isSystem = false,
-                    isMutable = false
+                    isMutable = isMutable
                 )
             )
         }

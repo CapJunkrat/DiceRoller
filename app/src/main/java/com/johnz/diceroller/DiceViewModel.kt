@@ -36,6 +36,7 @@ data class DiceUiState(
     // New Action Card State
     val selectedActionCard: ActionCard? = null,
     val visibleActionCards: List<ActionCard> = emptyList(),
+    val selectedRollMode: RollMode = RollMode.NORMAL,
 
     val customFormula: String = "",
     val rollTrigger: Long = 0L,
@@ -107,15 +108,20 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectActionCard(card: ActionCard) {
-        // Reset interactive controls when switching
+        // Reset interactive controls and roll mode when switching
         _internalState.value = _internalState.value.copy(
             selectedActionCard = card,
             displayedResult = "1",
             finalResult = 1,
             breakdown = "",
             customDiceCount = 1,
-            customModifier = 0
+            customModifier = 0,
+            selectedRollMode = RollMode.NORMAL
         )
+    }
+    
+    fun selectRollMode(mode: RollMode) {
+        _internalState.value = _internalState.value.copy(selectedRollMode = mode)
     }
 
     fun updateCustomFormula(formula: String) {
@@ -192,12 +198,13 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // Now accepts a roll mode (default Normal)
-    fun rollDice(rollMode: RollMode = RollMode.NORMAL) {
+    // Now uses state's selectedRollMode by default
+    fun rollDice() {
         if (_internalState.value.isRolling) return
         
         val currentState = uiState.value
         val card = currentState.selectedActionCard ?: return
+        val rollMode = currentState.selectedRollMode
 
         rollJob?.cancel()
         rollJob = viewModelScope.launch {
@@ -275,7 +282,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     // Manage Custom Action Cards
-    fun addActionCard(name: String, formula: String, visual: DiceType) {
+    fun addActionCard(name: String, formula: String, visual: DiceType, isMutable: Boolean) {
         viewModelScope.launch {
             repository.insertActionCard(
                 ActionCard(
@@ -283,7 +290,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     formula = formula,
                     visualType = visual,
                     isSystem = false,
-                    isMutable = false
+                    isMutable = isMutable
                 )
             )
         }
