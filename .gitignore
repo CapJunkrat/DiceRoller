@@ -117,3 +117,4 @@ obj/
 # Android Studio will place build artifacts here
 /app/build/
 /*/build/
+.vscode/
