@@ -1,14 +1,10 @@
 package com.johnz.diceroller
 
-import android.content.ContentValues
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.SoundPool
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -407,15 +403,14 @@ fun DiceScreen(
                         },
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(0.2f))
 
-                    // Display selected action card or fallback
-                    val currentCard = uiState.selectedActionCard
-                    if (currentCard != null) {
-                        DiceDisplay(uiState = uiState, card = currentCard)
+                    // Display selected action card steps or fallback
+                    if (uiState.rollSteps.isNotEmpty()) {
+                         DiceDisplay(uiState = uiState)
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(0.2f))
                 }
 
                 // Non-clickable Control Area
@@ -506,9 +501,26 @@ fun ActionCardControls(
 }
 
 @Composable
-fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
-    // Determine visual style based on critical state
-    val baseColor = when(card.visualType) {
+fun DiceDisplay(uiState: DiceUiState) {
+    // Scrollable container for steps
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(bottom = 16.dp)
+    ) {
+        uiState.rollSteps.forEach { step ->
+            StepDisplay(step = step, uiState = uiState)
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
+    // Determine color
+    val baseColor = when(step.visualType) {
         DiceType.D4 -> CartoonColors.Red
         DiceType.D6 -> CartoonColors.Blue
         DiceType.D8 -> CartoonColors.Green
@@ -519,53 +531,46 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         DiceType.CUSTOM -> Color.LightGray
     }
     
-    // Apply Critical Colors if not rolling
     val finalColor = if (uiState.isRolling) baseColor else {
-        when (uiState.criticalState) {
-            CriticalState.CRIT_HIT -> CartoonColors.Gold
-            CriticalState.CRIT_MISS -> CartoonColors.DarkRed
-            else -> baseColor
-        }
+        if (step.isCrit) CartoonColors.Gold
+        else if (step.isFumble) CartoonColors.DarkRed
+        else baseColor
     }
 
+    // Animation vars
     val scale by animateFloatAsState(
         targetValue = if (uiState.isRolling) 0.9f else 1.0f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
+        animationSpec = spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium),
         label = "scale"
     )
 
-    // Animation Transitions for Adv/Dis
-    val transition = updateTransition(targetState = uiState.selectedRollMode, label = "RollModeTransition")
+    // Adv/Dis Animation logic based on presence of secondary value
+    val hasSecondary = step.secondaryValue != null
+    // We treat existence of secondary value as indication of Adv/Dis visual mode for this step
+    val showDual = hasSecondary
     
-    val separationOffset by transition.animateDp(
-        transitionSpec = { tween(durationMillis = 400, easing = FastOutSlowInEasing) },
-        label = "Separation"
-    ) { mode ->
-        if (mode == RollMode.NORMAL) 0.dp else 80.dp // Moves left and right
-    }
+    // We use a transition to animate the separation if needed, 
+    // but simpler to just animate based on boolean state since mode switching is instant usually,
+    // but results appear after roll. 
+    // Actually, 'selectedRollMode' is available.
+    
+    val targetSeparation = if (showDual) 60.dp else 0.dp
+    val separationOffset by animateDpAsState(
+        targetValue = targetSeparation, 
+        animationSpec = spring(Spring.DampingRatioLowBouncy),
+        label = "separation"
+    )
 
-    val modeScale by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = 400, easing = FastOutSlowInEasing) },
-        label = "Scale"
-    ) { mode ->
-        if (mode == RollMode.NORMAL) 1.0f else 0.65f // Shrink to fit two dice
-    }
-
-    val secondDieAlpha by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = 400, easing = LinearEasing) },
-        label = "Alpha"
-    ) { mode ->
-        if (mode == RollMode.NORMAL) 0f else 1f
-    }
+    val targetScale = if (showDual) 0.75f else 1.0f
+    val modeScale by animateFloatAsState(targetValue = targetScale, label = "modeScale")
+    
+    val targetAlpha = if (showDual) 1f else 0f
+    val secondDieAlpha by animateFloatAsState(targetValue = targetAlpha, label = "alpha")
     
     // Shake Animation for Fumble
     val shakeOffset = remember { Animatable(0f) }
-    LaunchedEffect(uiState.criticalState) {
-        if (uiState.criticalState == CriticalState.CRIT_MISS && !uiState.isRolling) {
-            // Simple shake sequence
+    LaunchedEffect(step.isFumble) {
+        if (step.isFumble && !uiState.isRolling) {
             for (i in 0..5) {
                 shakeOffset.animateTo(10f, animationSpec = tween(50))
                 shakeOffset.animateTo(-10f, animationSpec = tween(50))
@@ -574,119 +579,109 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         }
     }
 
-    Box(
-        contentAlignment = Alignment.Center,
-        modifier = Modifier.size(280.dp).offset(x = shakeOffset.value.dp) // Main container size
-    ) {
-        // --- Dice 1 (Primary: Moves Left in Adv/Dis) ---
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Title
+        Text(
+            text = step.name,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = CartoonColors.Outline
+        )
+        
+        // Dice Container
         Box(
-            modifier = Modifier
-                .offset(x = -separationOffset)
-                .scale(scale * modeScale) 
-                .size(280.dp), // Size of individual die render space
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.height(160.dp).fillMaxWidth().offset(x = shakeOffset.value.dp)
         ) {
-            DiceRenderUnit(
-                uiState = uiState,
-                card = card,
-                color = finalColor,
-                displayText = uiState.displayedResult,
-                // Only show shadow for primary die if in Normal mode, or always? 
-                // Let's keep shadows consistent.
-            )
-        }
-
-        // --- Dice 2 (Secondary: Moves Right in Adv/Dis) ---
-        if (secondDieAlpha > 0f) {
-            Box(
-                modifier = Modifier
-                    .offset(x = separationOffset)
-                    .scale(scale * modeScale) 
-                    .alpha(secondDieAlpha)
-                    .size(280.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                // Secondary die doesn't necessarily get the critical color unless we track its state separately.
-                // For simplicity and "Single Source of Truth", we might just keep it base color or dim it?
-                // Requirements say "Discarded d20 rolls must never trigger effects."
-                // So the secondary die (often the discarded one, but depends on mode) should probably remain standard color.
-                // However, in Adv mode, the Main Die is the KEPT one (winner).
-                // In Dis mode, the Main Die is the KEPT one (loser).
-                // So applying 'finalColor' (derived from main die state) to the Main Die is correct.
-                // The secondary die acts as the "Ghost" / "Alternative". It shouldn't flash gold if the main one is.
-                
-                DiceRenderUnit(
-                    uiState = uiState,
-                    card = card,
-                    color = baseColor.copy(alpha = 0.6f), // Ghost effect
-                    displayText = uiState.displayedResult2
-                )
-            }
+             // Primary Die (Moves Left if Dual)
+             Box(
+                 modifier = Modifier
+                     .offset(x = -separationOffset)
+                     .scale(scale * modeScale)
+                     .size(160.dp),
+                 contentAlignment = Alignment.Center
+             ) {
+                 DiceRenderUnit(
+                     style = uiState.diceStyle,
+                     visualType = step.visualType,
+                     color = finalColor,
+                     displayText = step.primaryValue
+                 )
+             }
+             
+             // Secondary Die (Right)
+             if (secondDieAlpha > 0f) {
+                 Box(
+                     modifier = Modifier
+                         .offset(x = separationOffset)
+                         .scale(scale * modeScale)
+                         .alpha(secondDieAlpha)
+                         .size(160.dp),
+                     contentAlignment = Alignment.Center
+                 ) {
+                     DiceRenderUnit(
+                         style = uiState.diceStyle,
+                         visualType = step.visualType,
+                         color = baseColor.copy(alpha = 0.6f),
+                         displayText = step.secondaryValue ?: ""
+                     )
+                 }
+             }
+             
+             // Crit/Miss Labels
+             if (!uiState.isRolling) {
+                if (step.isCrit) {
+                    Text(
+                        text = "CRIT!",
+                        color = CartoonColors.Gold,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.align(Alignment.TopCenter).offset(y = 10.dp)
+                    )
+                } else if (step.isFumble) {
+                    Text(
+                        text = "MISS",
+                        color = CartoonColors.DarkRed,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-10).dp)
+                    )
+                }
+             }
         }
         
-        // --- Critical Labels ---
-        if (!uiState.isRolling) {
-            if (uiState.criticalState == CriticalState.CRIT_HIT) {
-                Text(
-                    text = "CRITICAL!",
-                    color = CartoonColors.Gold,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.align(Alignment.TopCenter).offset(y = (-20).dp)
-                )
-            } else if (uiState.criticalState == CriticalState.CRIT_MISS) {
-                Text(
-                    text = "FUMBLE",
-                    color = CartoonColors.DarkRed,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Black,
-                    modifier = Modifier.align(Alignment.BottomCenter).offset(y = 20.dp)
-                )
-            }
-        }
-    }
-
-    if (!uiState.isRolling) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 16.dp)) {
-            // Show Card Name if it's a custom card (or system card name)
-            Text(
-                text = card.name,
-                style = MaterialTheme.typography.headlineSmall,
-                color = CartoonColors.Outline,
-                fontWeight = FontWeight.Bold
-            )
-            if (uiState.breakdown.isNotEmpty()) {
-                Text(
-                    text = uiState.breakdown,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
+        // Detail
+        Text(
+            text = step.detail,
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Gray,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        )
     }
 }
 
+
 @Composable
 fun DiceRenderUnit(
-    uiState: DiceUiState,
-    card: ActionCard,
+    style: DiceStyle,
+    visualType: DiceType,
     color: Color,
     displayText: String
 ) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         DiceShapeRenderer(
-            style = uiState.diceStyle,
-            type = card.visualType,
+            style = style,
+            type = visualType,
             color = color
         )
 
         // Adjust text offset logic based on dice shape
-        val textOffset = when (card.visualType) {
-            DiceType.D4 -> Modifier.offset(x = 24.dp, y = 16.dp)
-            DiceType.D6 -> Modifier.offset(x = (-12).dp, y = 12.dp)
-            DiceType.D8 -> Modifier.offset(y = (-4).dp)
-            DiceType.D10 -> Modifier.offset(y = (-12).dp)
+        val textOffset = when (visualType) {
+            DiceType.D4 -> Modifier.offset(x = 12.dp, y = 8.dp) // Scaled down roughly
+            DiceType.D6 -> Modifier.offset(x = (-6).dp, y = 6.dp)
+            DiceType.D8 -> Modifier.offset(y = (-2).dp)
+            DiceType.D10 -> Modifier.offset(y = (-6).dp)
             else -> Modifier
         }
 
@@ -695,26 +690,24 @@ fun DiceRenderUnit(
             modifier = textOffset
         ) {
             // Scale font size based on text length
-            // For Combo results (e.g. "23 / 15"), we need smaller text
             val fontSize = when {
-                displayText.length > 8 -> 32.sp 
-                displayText.length > 5 -> 42.sp
-                displayText.length > 3 -> 54.sp
-                else -> 64.sp
+                displayText.length > 5 -> 24.sp
+                displayText.length > 3 -> 32.sp
+                else -> 42.sp
             }
             
             // Shadow text
-            if (uiState.diceStyle != DiceStyle.FLAT_2D) {
+            if (style != DiceStyle.FLAT_2D) {
                 Text(
                     text = displayText,
                     fontSize = fontSize,
                     fontWeight = FontWeight.ExtraBold,
-                    color = if (uiState.diceStyle == DiceStyle.REALISTIC_3D) Color.Black.copy(alpha = 0.3f) else CartoonColors.Outline.copy(alpha = 0.2f),
+                    color = if (style == DiceStyle.REALISTIC_3D) Color.Black.copy(alpha = 0.3f) else CartoonColors.Outline.copy(alpha = 0.2f),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.displayLarge.copy(
-                        drawStyle = Stroke(width = 12f, join = StrokeJoin.Round)
+                        drawStyle = Stroke(width = 8f, join = StrokeJoin.Round)
                     ),
-                    modifier = Modifier.offset(x = 4.dp, y = 4.dp)
+                    modifier = Modifier.offset(x = 2.dp, y = 2.dp)
                 )
             }
 
@@ -1354,14 +1347,6 @@ fun HistoryScreen(
             onConfirm = { name ->
                 viewModel.startNewSession(name)
                 showCreateDialog = false
-                // No navigation needed, DiceScreen will handle active session UI
-                // But we probably want to navigate back to Main if started from History?
-                // Actually, starting a new session from history usually implies you want to play it.
-                // The current flow is: onNavigateToSessions -> Create -> (Session Starts)
-                // Here we are inside HistoryScreen.
-                // If we start a new session, we should probably clear history view context?
-                // Let's just stay here or maybe go back. The previous logic didn't navigate back.
-                // The user asked to "Save" via this button, so essentially "Create Session".
             }
         )
     }
@@ -1471,27 +1456,6 @@ fun HistoryScreen(
                     }
                 }
             } else {
-                // Removed the "Quick Play (Not Saved)" Surface with Save/Load button
-                // as requested.
-                /*
-                Surface(
-                    color = Color.LightGray.copy(alpha = 0.2f),
-                    modifier = Modifier.fillMaxWidth().padding(8.dp),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Playing: Quick Play (Not Saved)",
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        // Removed Button
-                    }
-                }
-                */
             }
 
             LazyColumn(
@@ -1684,9 +1648,7 @@ fun SessionsScreen(
             onConfirm = { name ->
                 viewModel.startNewSession(name)
                 showCreateDialog = false
-                onNavigateBack() // Go back to history or stay here? User might want to verify.
-                // Actually, flow: Open Sessions -> Create -> (Session Starts) -> Maybe go back to DiceScreen?
-                // Let's go back.
+                onNavigateBack()
             }
         )
     }

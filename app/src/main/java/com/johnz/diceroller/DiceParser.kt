@@ -38,6 +38,15 @@ object DiceParser {
     }
 
     /**
+     * Helper to determine the largest die face in a formula for visualization.
+     */
+    fun getMaxFaces(formula: String): Int {
+         val regex = Regex("d(\\d+)")
+         val matches = regex.findAll(formula)
+         return matches.mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
+    }
+
+    /**
      * Parses a formula string and executes the roll.
      * 
      * If mode is ADVANTAGE or DISADVANTAGE, d20 rolls are rolled twice and the best/worst is kept.

@@ -41,13 +41,26 @@ data class RollHistoryItem(
     val timestamp: Long = System.currentTimeMillis()
 )
 
+data class StepDisplayState(
+    val name: String,
+    val primaryValue: String,
+    val secondaryValue: String? = null, // Only for Adv/Dis scenarios
+    val detail: String = "",
+    val visualType: DiceType = DiceType.CUSTOM,
+    val isCrit: Boolean = false,
+    val isFumble: Boolean = false
+)
+
 data class DiceUiState(
-    val displayedResult: String = "1",
-    val displayedResult2: String = "1", // Second die value for Adv/Dis
+    val displayedResult: String = "1", // Legacy/Main result
+    val displayedResult2: String = "1", 
     val finalResult: Int = 1,
     val breakdown: String = "",
     val isRolling: Boolean = false,
     
+    // List of steps to display (for Combos)
+    val rollSteps: List<StepDisplayState> = emptyList(),
+
     // Visual State for Criticals
     val criticalState: CriticalState = CriticalState.NORMAL,
 
@@ -138,12 +151,26 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
              }
         }
 
+        // Initialize steps if needed (e.g. on first load)
+        val steps = if (newSelected != null && state.rollSteps.isEmpty()) {
+            if (newSelected.type == ActionCardType.COMBO) {
+                parseSteps(newSelected.steps).map {
+                     val faces = DiceParser.getMaxFaces(it.formula)
+                     val type = getDiceType(faces)
+                     StepDisplayState(it.name, "?", null, "", if (type == DiceType.CUSTOM) newSelected.visualType else type)
+                }
+            } else {
+                listOf(StepDisplayState(newSelected.name, "?", null, "", newSelected.visualType))
+            }
+        } else state.rollSteps
+
         state.copy(
             visibleActionCards = sortedCards,
             selectedActionCard = newSelected,
             diceStyle = currentStyle,
             cheatNat20 = cheatState.cheatNat20,
-            cheatNat1 = cheatState.cheatNat1
+            cheatNat1 = cheatState.cheatNat1,
+            rollSteps = steps
         )
     }.stateIn(
         scope = viewModelScope,
@@ -166,7 +193,30 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun getDiceType(faces: Int): DiceType {
+        return when (faces) {
+            4 -> DiceType.D4
+            6 -> DiceType.D6
+            8 -> DiceType.D8
+            10 -> DiceType.D10
+            12 -> DiceType.D12
+            20 -> DiceType.D20
+            100 -> DiceType.D100
+            else -> DiceType.CUSTOM
+        }
+    }
+
     fun selectActionCard(card: ActionCard) {
+        val stepsList = if (card.type == ActionCardType.COMBO) {
+             parseSteps(card.steps).map { 
+                 val faces = DiceParser.getMaxFaces(it.formula)
+                 val type = getDiceType(faces)
+                 StepDisplayState(it.name, "?", null, "", if (type == DiceType.CUSTOM) card.visualType else type)
+             }
+        } else {
+             listOf(StepDisplayState(card.name, "?", null, "", card.visualType))
+        }
+
         // Reset interactive controls, roll mode, and critical state when switching
         _internalState.value = _internalState.value.copy(
             selectedActionCard = card,
@@ -177,7 +227,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             criticalState = CriticalState.NORMAL,
             customDiceCount = 1,
             customModifier = 0,
-            selectedRollMode = RollMode.NORMAL
+            selectedRollMode = RollMode.NORMAL,
+            rollSteps = stepsList
         )
         // Persist selection
         viewModelScope.launch {
@@ -290,10 +341,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             var isOverallNat20 = false
             var isOverallNat1 = false
             
-            // Animation variables
-            var maxAnimationValue = 20
-            var finalDisplay1 = "0"
-            var finalDisplay2 = "0"
+            val calculatedSteps = mutableListOf<StepDisplayState>()
 
             if (card.type == ActionCardType.COMBO) {
                 // COMBO LOGIC
@@ -302,25 +350,24 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 val sbBreakdown = StringBuilder()
                 var previousAttackCrit = false
                 var previousAttackHit = true // Assume hit initially
-                
-                // Track total animation magnitude
-                maxAnimationValue = 0
-
-                // FIX: Track display values for Adv/Dis
-                var primaryDisplayValue = ""
-                var secondaryDisplayValue = ""
-                var displayAttackFound = false
 
                 for ((index, step) in steps.withIndex()) {
                     // Conditions
                     if (step.isAttack) {
-                        // Reset flags for new attack sequence
                         previousAttackCrit = false
                         previousAttackHit = true
                     } else {
-                        // Damage step: Skip if previous Attack missed
                         if (!previousAttackHit) {
+                            // Skipped step
                             sbBreakdown.append("\n${step.name}: Skipped (Miss)")
+                            val faces = DiceParser.getMaxFaces(step.formula)
+                            calculatedSteps.add(StepDisplayState(
+                                name = step.name,
+                                primaryValue = "-",
+                                secondaryValue = null,
+                                detail = "Skipped",
+                                visualType = getDiceType(faces)
+                            ))
                             continue
                         }
                     }
@@ -335,19 +382,15 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     // Roll Step
                     val result = DiceParser.parseAndRoll(formulaToRoll, rollMode, forcedD20Result)
                     
-                    // Check Crit/Fumble
-                    // Only standard D20s are candidates for critical hits/misses in this context
                     val d20Rolls = result.rolls.filter { it.die is StandardDie && (it.die as StandardDie).faces == 20 }
                     var stepNat20 = false
                     var stepNat1 = false
                     
                     if (d20Rolls.isNotEmpty()) {
-                        if (rollMode == RollMode.NORMAL) {
-                            // Check any d20 rolled a 20 (though usually just 1 in combo unless formula has more)
+                         if (rollMode == RollMode.NORMAL) {
                             stepNat20 = d20Rolls.any { it.value == 20 }
                             stepNat1 = d20Rolls.any { it.value == 1 }
                         } else {
-                            // Adv/Dis: Check kept value (DiceParser logic keeps result in .value)
                             stepNat20 = d20Rolls.any { it.value == 20 }
                             stepNat1 = d20Rolls.any { it.value == 1 }
                         }
@@ -358,12 +401,6 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         if (stepNat20) isOverallNat20 = true
                         if (stepNat1) isOverallNat1 = true
                         
-                        // Hit Logic:
-                        // 1. Nat 1 is always Miss
-                        // 2. Nat 20 is always Hit
-                        // 3. If Threshold > 0, Total >= Threshold is Hit
-                        // 4. If Threshold == 0, Default is Hit (unless Nat 1)
-                        
                         if (stepNat1) {
                             previousAttackHit = false
                         } else if (stepNat20) {
@@ -371,46 +408,16 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         } else if (step.threshold > 0) {
                             previousAttackHit = result.total >= step.threshold
                         } else {
-                            previousAttackHit = true // No AC defined, assume hit (unless Nat 1)
+                            previousAttackHit = true
                         }
                     }
-
-                    // --- NEW LOGIC START ---
-                    val hasD20 = d20Rolls.isNotEmpty()
-                    val shouldUseForDisplay = if (rollMode == RollMode.NORMAL) {
-                        true 
-                    } else {
-                        if (!displayAttackFound) {
-                            if (step.isAttack || hasD20) {
-                                displayAttackFound = true
-                            }
-                            true
-                        } else {
-                            false 
-                        }
-                    }
-
-                    if (shouldUseForDisplay) {
-                        primaryDisplayValue = result.total.toString()
-                        if (rollMode == RollMode.NORMAL) {
-                            secondaryDisplayValue = primaryDisplayValue
-                        } else {
-                             val delta = result.rolls.sumOf { roll ->
-                                 val kept = roll.value
-                                 val discarded = roll.discardedValue ?: kept 
-                                 (discarded - kept) * roll.coefficient
-                             }
-                             secondaryDisplayValue = (result.total + delta).toString()
-                        }
-                    }
-                    // --- NEW LOGIC END ---
 
                     // Build Strings
                     if (index > 0) sbResult.append(" / ")
                     sbResult.append("${step.name}: ${result.total}")
                     if (stepNat20 && step.isAttack) sbResult.append(" (CRIT!)")
                     if (stepNat1 && step.isAttack) sbResult.append(" (MISS!)")
-                    else if (step.isAttack && !previousAttackHit) sbResult.append(" (Miss)") // Normal miss
+                    else if (step.isAttack && !previousAttackHit) sbResult.append(" (Miss)") 
 
                     if (index > 0) sbBreakdown.append(" | ")
                     sbBreakdown.append("${step.name}: ${result.breakdown}")
@@ -418,14 +425,34 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         sbBreakdown.append(" vs AC ${step.threshold}")
                     }
                     
-                    resultTotal = result.total
-                    maxAnimationValue += result.maxTotal
+                    resultTotal = result.total // This will end up being the LAST step's total for single number display, which is fine
+                    
+                    // Populate Step Display
+                    var sVal: String? = null
+                    if (rollMode != RollMode.NORMAL && d20Rolls.isNotEmpty()) {
+                         val delta = result.rolls.sumOf { roll ->
+                             val kept = roll.value
+                             val discarded = roll.discardedValue ?: kept 
+                             (discarded - kept) * roll.coefficient
+                         }
+                         sVal = (result.total + delta).toString()
+                    }
+                    
+                    val visualT = getDiceType(DiceParser.getMaxFaces(step.formula))
+                    
+                    calculatedSteps.add(StepDisplayState(
+                        name = step.name,
+                        primaryValue = result.total.toString(),
+                        secondaryValue = sVal,
+                        detail = result.breakdown + (if (stepNat20) " (Crit!)" else if (stepNat1) " (Miss!)" else ""),
+                        visualType = if (visualT != DiceType.CUSTOM) visualT else card.visualType,
+                        isCrit = stepNat20,
+                        isFumble = stepNat1
+                    ))
                 }
                 
                 resultString = sbResult.toString()
                 breakdownString = sbBreakdown.toString()
-                finalDisplay1 = if (primaryDisplayValue.isNotEmpty()) primaryDisplayValue else resultTotal.toString()
-                finalDisplay2 = if (secondaryDisplayValue.isNotEmpty()) secondaryDisplayValue else "1"
 
             } else {
                 // SIMPLE or FORMULA logic
@@ -441,15 +468,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
 
                 val result = DiceParser.parseAndRoll(formula, rollMode, forcedD20Result)
                 
-                // Detect Criticals
                 val diceRolls = result.rolls.filter { it.die !is ConstantDie }
-                val hasDice = diceRolls.isNotEmpty()
                 
-                finalDisplay1 = result.total.toString()
-                finalDisplay2 = "1"
-
                 if (rollMode == RollMode.NORMAL) {
-                    finalDisplay2 = finalDisplay1
                      isOverallNat20 = diceRolls.any { 
                         it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20 
                     }
@@ -463,18 +484,31 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                      isOverallNat1 = diceRolls.any { 
                         it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1
                     }
+                }
+                
+                var sVal: String? = null
+                if (rollMode != RollMode.NORMAL) {
                     val delta = diceRolls.sumOf { roll ->
                         val kept = roll.value
                         val discarded = roll.discardedValue ?: kept 
                         (discarded - kept) * roll.coefficient
                     }
-                    finalDisplay2 = (result.total + delta).toString()
+                    sVal = (result.total + delta).toString()
                 }
-                
+
                 resultTotal = result.total
                 resultString = result.total.toString()
                 breakdownString = result.breakdown
-                maxAnimationValue = result.maxTotal
+                
+                calculatedSteps.add(StepDisplayState(
+                     name = card.name,
+                     primaryValue = result.total.toString(),
+                     secondaryValue = sVal,
+                     detail = breakdownString,
+                     visualType = card.visualType,
+                     isCrit = isOverallNat20,
+                     isFumble = isOverallNat1
+                ))
             }
 
             val finalCriticalState = if (isOverallNat20) CriticalState.CRIT_HIT else if (isOverallNat1) CriticalState.CRIT_MISS else CriticalState.NORMAL
@@ -483,23 +517,31 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             val animationDuration = 500L
             val startTime = System.currentTimeMillis()
             while (System.currentTimeMillis() < startTime + animationDuration) {
-                var nextValue = kotlin.random.Random.nextInt(1, maxAnimationValue + 1)
-                var nextValue2 = if (rollMode != RollMode.NORMAL && card.type != ActionCardType.COMBO) kotlin.random.Random.nextInt(1, maxAnimationValue + 1) else nextValue
+                
+                 val currentSteps = _internalState.value.rollSteps.map { step ->
+                     val faces = step.visualType.faces
+                     val maxVal = if (faces > 0) faces else 20
+                     val r1 = kotlin.random.Random.nextInt(1, maxVal + 1).toString()
+                     val r2 = if (step.visualType == DiceType.D20 && rollMode != RollMode.NORMAL) 
+                         kotlin.random.Random.nextInt(1, maxVal + 1).toString() else null
+                     
+                     step.copy(primaryValue = r1, secondaryValue = r2, detail = "Rolling...")
+                }
                 
                 _internalState.value = _internalState.value.copy(
-                    displayedResult = nextValue.toString(),
-                    displayedResult2 = nextValue2.toString()
+                    rollSteps = currentSteps
                 )
                 delay(60L)
             }
 
             val newState = _internalState.value.copy(
                 isRolling = false,
-                displayedResult = finalDisplay1,
-                displayedResult2 = finalDisplay2,
+                displayedResult = resultTotal.toString(), // Legacy
+                displayedResult2 = "1", // Legacy
                 finalResult = resultTotal,
                 breakdown = breakdownString,
-                criticalState = finalCriticalState
+                criticalState = finalCriticalState,
+                rollSteps = calculatedSteps
             )
             
             // Save History
