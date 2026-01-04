@@ -96,6 +96,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun duplicateActionCard(card: ActionCard) {
+        viewModelScope.launch {
+            gameRepository.insertActionCard(
+                card.copy(
+                    id = 0, // 0 triggers auto-increment
+                    name = "${card.name} Copy",
+                    isSystem = false // Always duplicate as custom
+                )
+            )
+        }
+    }
+
     fun updateActionCard(card: ActionCard) {
         viewModelScope.launch {
             gameRepository.updateActionCard(card)

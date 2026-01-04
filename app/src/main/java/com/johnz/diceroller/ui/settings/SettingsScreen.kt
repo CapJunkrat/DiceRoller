@@ -25,6 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,6 +35,43 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.johnz.diceroller.DiceParser
 import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.db.ActionCard
+
+// Custom ContentCopy Icon (since we might not have it in dependencies)
+val CopyIcon: ImageVector = ImageVector.Builder(
+    name = "ContentCopy",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f
+).apply {
+    path(fill = SolidColor(Color.Black)) {
+        moveTo(16.0f, 1.0f)
+        horizontalLineTo(4.0f)
+        curveTo(2.9f, 1.0f, 2.0f, 1.9f, 2.0f, 3.0f)
+        verticalLineTo(17.0f)
+        horizontalLineTo(4.0f)
+        verticalLineTo(3.0f)
+        horizontalLineTo(16.0f)
+        verticalLineTo(1.0f)
+        close()
+        moveTo(19.0f, 5.0f)
+        horizontalLineTo(8.0f)
+        curveTo(6.9f, 5.0f, 6.0f, 5.9f, 6.0f, 7.0f)
+        verticalLineTo(21.0f)
+        curveTo(6.0f, 22.1f, 6.9f, 23.0f, 8.0f, 23.0f)
+        horizontalLineTo(19.0f)
+        curveTo(20.1f, 23.0f, 21.0f, 22.1f, 21.0f, 21.0f)
+        verticalLineTo(7.0f)
+        curveTo(21.0f, 5.9f, 20.1f, 5.0f, 19.0f, 5.0f)
+        close()
+        moveTo(19.0f, 21.0f)
+        horizontalLineTo(8.0f)
+        verticalLineTo(7.0f)
+        horizontalLineTo(19.0f)
+        verticalLineTo(21.0f)
+        close()
+    }
+}.build()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -220,6 +260,7 @@ fun SettingsScreen(
                     ActionCardRow(
                         card = card, 
                         onEdit = { cardToEdit = card },
+                        onDuplicate = { viewModel.duplicateActionCard(card) },
                         onDelete = { cardToDelete = card }
                     )
                 }
@@ -298,7 +339,7 @@ fun SettingsScreen(
 }
 
 @Composable
-fun ActionCardRow(card: ActionCard, onEdit: () -> Unit, onDelete: () -> Unit) {
+fun ActionCardRow(card: ActionCard, onEdit: () -> Unit, onDuplicate: () -> Unit, onDelete: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -311,6 +352,9 @@ fun ActionCardRow(card: ActionCard, onEdit: () -> Unit, onDelete: () -> Unit) {
             Text(text = desc, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
         }
         
+        IconButton(onClick = onDuplicate) {
+            Icon(CopyIcon, contentDescription = "Duplicate", tint = MaterialTheme.colorScheme.primary)
+        }
         IconButton(onClick = onEdit) {
             Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
         }
