@@ -10,12 +10,14 @@ import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.SettingsRepository
 import com.johnz.diceroller.data.db.ActionCard
 import com.johnz.diceroller.data.db.AppDatabase
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -53,14 +55,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun checkSystemHapticsStatus() {
-        try {
-            val hapticEnabled = Settings.System.getInt(
-                getApplication<Application>().contentResolver,
-                Settings.System.HAPTIC_FEEDBACK_ENABLED, 0
-            ) != 0
+        viewModelScope.launch {
+            val hapticEnabled = withContext(Dispatchers.IO) {
+                try {
+                    Settings.System.getInt(
+                        getApplication<Application>().contentResolver,
+                        Settings.System.HAPTIC_FEEDBACK_ENABLED, 0
+                    ) != 0
+                } catch (e: Exception) {
+                    true
+                }
+            }
             _isSystemHapticsEnabled.value = hapticEnabled
-        } catch (e: Exception) {
-            _isSystemHapticsEnabled.value = true
         }
     }
 

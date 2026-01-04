@@ -5,7 +5,6 @@ import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -26,16 +25,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.johnz.diceroller.DiceParser
 import com.johnz.diceroller.DiceType
-import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.db.ActionCard
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,7 +43,6 @@ fun SettingsScreen(
     val allCards by viewModel.allActionCards.collectAsState()
     
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     
     var showAddCardDialog by remember { mutableStateOf(false) }
     var cardToEdit by remember { mutableStateOf<ActionCard?>(null) }
@@ -112,18 +105,6 @@ fun SettingsScreen(
                 }
             }
         )
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.checkSystemHapticsStatus()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
     }
 
     Scaffold(
