@@ -46,7 +46,6 @@ fun SettingsScreen(
     viewModel: SettingsViewModel = viewModel()
 ) {
     val isSystemHapticsEnabled by viewModel.isSystemHapticsEnabled.collectAsState()
-    val currentStyle by viewModel.diceStyle.collectAsState()
     val allCards by viewModel.allActionCards.collectAsState()
     
     val context = LocalContext.current
@@ -191,43 +190,6 @@ fun SettingsScreen(
                 }
             }
 
-            // --- Visual Style Section ---
-            Text(
-                text = "Visual Style",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                StyleChip(
-                    label = "2D",
-                    isSelected = currentStyle == DiceStyle.FLAT_2D,
-                    isEnabled = false,
-                    onClick = { viewModel.onDiceStyleChanged(DiceStyle.FLAT_2D) },
-                    modifier = Modifier.weight(1f)
-                )
-                StyleChip(
-                    label = "2.5D",
-                    isSelected = currentStyle == DiceStyle.CARTOON_25D,
-                    onClick = { viewModel.onDiceStyleChanged(DiceStyle.CARTOON_25D) },
-                    modifier = Modifier.weight(1f)
-                )
-                StyleChip(
-                    label = "3D",
-                    isSelected = currentStyle == DiceStyle.REALISTIC_3D,
-                    isEnabled = false,
-                    onClick = { viewModel.onDiceStyleChanged(DiceStyle.REALISTIC_3D) },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
-
             // --- Action Cards Management ---
             Text(
                 text = "Action Cards",
@@ -270,23 +232,6 @@ fun SettingsScreen(
                 Spacer(Modifier.width(8.dp))
                 Text("Create New Action Card")
             }
-            
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
-
-            // --- Custom Dice Configuration ---
-            Text(
-                text = "Custom Dice Settings",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-             DiceVisibilityRow(
-                label = "Enable Quick Formula Input",
-                isVisible = viewModel.isCustomDiceVisible.collectAsState().value,
-                onCheckedChange = { isChecked ->
-                    viewModel.onCustomDiceVisibilityChanged(isChecked)
-                }
-            )
             
             Divider(modifier = Modifier.padding(vertical = 16.dp))
             
@@ -504,66 +449,4 @@ fun ActionCardDialog(
             }
         }
     )
-}
-
-@Composable
-private fun StyleChip(
-    label: String,
-    isSelected: Boolean,
-    isEnabled: Boolean = true,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val backgroundColor = when {
-        !isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-        isSelected -> MaterialTheme.colorScheme.primaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
-    }
-    val contentColor = when {
-        !isEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-        isSelected -> MaterialTheme.colorScheme.onPrimaryContainer
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Box(
-        modifier = modifier
-            .height(48.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(backgroundColor)
-            .then(if (isEnabled) Modifier.clickable(onClick = onClick) else Modifier),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-            color = contentColor,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun DiceVisibilityRow(
-    label: String,
-    isVisible: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!isVisible) }
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(modifier = Modifier.weight(1f))
-        Switch(
-            checked = isVisible,
-            onCheckedChange = onCheckedChange
-        )
-    }
 }
