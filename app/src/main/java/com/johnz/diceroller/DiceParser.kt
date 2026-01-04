@@ -24,6 +24,20 @@ object DiceParser {
     }
 
     /**
+     * Doubles the number of dice in a formula (for Critical Hits).
+     * e.g., "1d8+3" -> "2d8+3", "d6" -> "2d6", "2d6+1d4" -> "4d6+2d4"
+     */
+    fun doubleDice(formula: String): String {
+        val regex = Regex("(\\d*)d(\\d+)")
+        return regex.replace(formula) { matchResult ->
+            val countStr = matchResult.groupValues[1]
+            val faces = matchResult.groupValues[2]
+            val count = if (countStr.isEmpty()) 1 else countStr.toInt()
+            "${count * 2}d$faces"
+        }
+    }
+
+    /**
      * Parses a formula string and executes the roll.
      * 
      * If mode is ADVANTAGE or DISADVANTAGE, d20 rolls are rolled twice and the best/worst is kept.

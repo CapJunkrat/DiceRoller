@@ -72,6 +72,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.db.ActionCard
+import com.johnz.diceroller.data.db.ActionCardType
 import com.johnz.diceroller.data.db.GameSession
 import com.johnz.diceroller.data.db.RollMode
 import com.johnz.diceroller.ui.settings.SettingsScreen
@@ -432,7 +433,7 @@ fun DiceScreen(
                             onValueChange = { viewModel.updateCustomFormula(it) },
                             onDone = { viewModel.rollDice() }
                         )
-                    } else if (currentCard.isMutable) {
+                    } else if (currentCard.type == ActionCardType.SIMPLE) {
                         InteractiveDiceControls(
                             diceCount = uiState.customDiceCount,
                             modifier = uiState.customModifier,
@@ -440,7 +441,7 @@ fun DiceScreen(
                             onModifierChange = { viewModel.changeCustomModifier(it) }
                         )
                     } else {
-                        // Immutable Action Cards (Custom) show Adv/Dis
+                        // Formula or Combo
                         ActionCardControls(
                             currentMode = uiState.selectedRollMode,
                             onModeSelect = { viewModel.selectRollMode(it) }
@@ -693,11 +694,20 @@ fun DiceRenderUnit(
             contentAlignment = Alignment.Center,
             modifier = textOffset
         ) {
+            // Scale font size based on text length
+            // For Combo results (e.g. "23 / 15"), we need smaller text
+            val fontSize = when {
+                displayText.length > 8 -> 32.sp 
+                displayText.length > 5 -> 42.sp
+                displayText.length > 3 -> 54.sp
+                else -> 64.sp
+            }
+            
             // Shadow text
             if (uiState.diceStyle != DiceStyle.FLAT_2D) {
                 Text(
                     text = displayText,
-                    fontSize = 64.sp,
+                    fontSize = fontSize,
                     fontWeight = FontWeight.ExtraBold,
                     color = if (uiState.diceStyle == DiceStyle.REALISTIC_3D) Color.Black.copy(alpha = 0.3f) else CartoonColors.Outline.copy(alpha = 0.2f),
                     textAlign = TextAlign.Center,
@@ -713,7 +723,7 @@ fun DiceRenderUnit(
             
             Text(
                 text = displayText,
-                fontSize = 64.sp,
+                fontSize = fontSize,
                 fontWeight = FontWeight.ExtraBold,
                 color = textColor,
                 textAlign = TextAlign.Center
@@ -1535,6 +1545,7 @@ fun HistoryItemCard(item: RollHistoryItem) {
         colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
+        // Use IntrinsicSize.Min to match height of accent stripe
         Row(
             modifier = Modifier.height(IntrinsicSize.Min)
         ) {
@@ -1549,18 +1560,22 @@ fun HistoryItemCard(item: RollHistoryItem) {
             }
             
             // Content
-            Row(
+            Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(16.dp)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                // Header: Card Name and Timestamp
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = item.breakdown,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.Gray
+                        text = item.cardName.ifBlank { "Roll" },
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = CartoonColors.Outline
                     )
                     Text(
                         text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(item.timestamp)),
@@ -1568,23 +1583,84 @@ fun HistoryItemCard(item: RollHistoryItem) {
                         color = Color.LightGray
                     )
                 }
-                
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (item.isNat20) {
-                        Text(
-                            text = "★",
-                            color = resultColor,
-                            style = MaterialTheme.typography.headlineSmall,
-                            modifier = Modifier.padding(end = 4.dp)
-                        )
-                    }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Determine if result is "Complex" (Combo)
+                // Heuristic: If it contains " / " it is likely a combo result.
+                val isCombo = item.result.contains("/") || item.result.startsWith("Attack:") || item.breakdown.contains("\n") || item.breakdown.contains("|")
+
+                if (isCombo) {
+                    // Parse logic for Combo Display
+                    // We try to match parts of result with parts of breakdown
+                    val resultParts = item.result.split(" / ").map { it.trim() }
+                    val breakdownParts = item.breakdown.split(Regex("[|\\n]+")).map { it.trim() }.filter { it.isNotEmpty() }
                     
-                    Text(
-                        text = item.result,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = resultColor
-                    )
+                    Column {
+                        breakdownParts.forEach { bdPart ->
+                            // Attempt to find matching result part based on label
+                            // e.g. bdPart = "Attack: 1d20..." -> Label "Attack"
+                            val label = bdPart.substringBefore(":", "").trim()
+                            val matchingResult = if (label.isNotEmpty()) {
+                                resultParts.find { it.startsWith("$label:") }
+                            } else null
+                            
+                            if (matchingResult != null) {
+                                // Display Result Title + Breakdown
+                                Text(
+                                    text = matchingResult,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = resultColor
+                                )
+                                Text(
+                                    text = bdPart.substringAfter(":").trim(), // Strip label from breakdown to avoid duplication if desired, or keep it. keeping implies "1d20..."
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Gray
+                                )
+                            } else {
+                                // Fallback: Just display breakdown part (e.g. Skipped)
+                                Text(
+                                    text = bdPart,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = Color.Gray
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+                    }
+                } else {
+                    // Simple Roll Display (Big Number)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.breakdown,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color.Gray
+                            )
+                        }
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (item.isNat20) {
+                                Text(
+                                    text = "★",
+                                    color = resultColor,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
+                            Text(
+                                text = item.result,
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = resultColor
+                            )
+                        }
+                    }
                 }
             }
         }

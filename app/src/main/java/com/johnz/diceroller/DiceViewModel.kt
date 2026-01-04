@@ -9,6 +9,7 @@ import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.RollData
 import com.johnz.diceroller.data.SettingsRepository
 import com.johnz.diceroller.data.db.ActionCard
+import com.johnz.diceroller.data.db.ActionCardType
 import com.johnz.diceroller.data.db.AppDatabase
 import com.johnz.diceroller.data.db.GameSession
 import com.johnz.diceroller.data.db.RollMode
@@ -36,6 +37,7 @@ data class RollHistoryItem(
     val breakdown: String,
     val isNat20: Boolean = false,
     val isNat1: Boolean = false,
+    val cardName: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -76,6 +78,8 @@ data class CheatState(
     val cheatNat20: Boolean = false,
     val cheatNat1: Boolean = false
 )
+
+data class ComboStep(val name: String, val formula: String, val isAttack: Boolean, val threshold: Int = 0)
 
 sealed interface GameEvent {
     object RollStarted : GameEvent
@@ -118,11 +122,6 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         )
 
         // Determine selection
-        // 1. If internal state has a valid selection, use it.
-        // 2. If internal state is null (start-up) or selected card is gone (deleted), try to restore from lastSelectedId.
-        // 3. If lastSelectedId not found, try default "D20".
-        // 4. If "D20" not found, use first available card.
-        
         var newSelected: ActionCard? = state.selectedActionCard?.let { current ->
              sortedCards.find { it.id == current.id }
         }
@@ -194,7 +193,6 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         _internalState.value = _internalState.value.copy(customFormula = formula)
     }
     
-    // Interactive Button Methods
     fun changeCustomDiceCount(delta: Int) {
         val current = _internalState.value.customDiceCount
         val newCount = (current + delta).coerceAtLeast(1) // Minimum 1 die
@@ -210,19 +208,14 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         val currentHistory = _internalState.value.history
         viewModelScope.launch {
             val id = repository.createSession(name)
-            
-            // Transfer existing history if any (and if we were in Quick Play mode)
             if (_internalState.value.activeSession == null && currentHistory.isNotEmpty()) {
                 val rollsToSave = currentHistory.map { 
-                    RollData(it.result, it.breakdown, it.isNat20, it.isNat1, it.timestamp) 
+                    RollData(it.result, it.breakdown, it.isNat20, it.isNat1, it.cardName, it.timestamp) 
                 }
                 repository.addBatchRolls(id, rollsToSave)
             }
-
             val session = repository.getSession(id)
-            if (session != null) {
-                resumeSession(session)
-            }
+            if (session != null) resumeSession(session)
         }
     }
 
@@ -231,7 +224,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (currentHistory.isNotEmpty()) {
                 val rollsToSave = currentHistory.map { 
-                    RollData(it.result, it.breakdown, it.isNat20, it.isNat1, it.timestamp) 
+                    RollData(it.result, it.breakdown, it.isNat20, it.isNat1, it.cardName, it.timestamp) 
                 }
                 repository.addBatchRolls(session.id, rollsToSave)
             }
@@ -242,10 +235,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     fun resumeSession(session: GameSession) {
         sessionJob?.cancel()
         _internalState.value = _internalState.value.copy(activeSession = session)
-        
         sessionJob = viewModelScope.launch {
             repository.getRollsForSession(session.id).collectLatest { rolls ->
-                val items = rolls.map { RollHistoryItem(it.result, it.breakdown, it.isNat20, it.isNat1, it.timestamp) }
+                val items = rolls.map { RollHistoryItem(it.result, it.breakdown, it.isNat20, it.isNat1, it.cardName, it.timestamp) }
                 _internalState.value = _internalState.value.copy(history = items)
             }
         }
@@ -258,9 +250,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     
     fun deleteSession(session: GameSession) {
         viewModelScope.launch {
-            if (_internalState.value.activeSession?.id == session.id) {
-                endCurrentSession()
-            }
+            if (_internalState.value.activeSession?.id == session.id) endCurrentSession()
             repository.deleteSession(session.id)
         }
     }
@@ -268,16 +258,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     fun clearCurrentHistory() {
         val session = _internalState.value.activeSession
         if (session != null) {
-            viewModelScope.launch {
-                repository.clearSessionRolls(session.id)
-            }
+            viewModelScope.launch { repository.clearSessionRolls(session.id) }
         } else {
-            // Quick play, just clear state
             _internalState.value = _internalState.value.copy(history = emptyList())
         }
     }
 
-    // Now uses state's selectedRollMode by default
     fun rollDice() {
         if (_internalState.value.isRolling) return
         
@@ -291,172 +277,254 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             _internalState.value = _internalState.value.copy(
                 isRolling = true,
                 rollTrigger = triggerTime,
-                criticalState = CriticalState.NORMAL // Reset state on new roll
+                criticalState = CriticalState.NORMAL
             )
-
-            // Emit Start Event
             _gameEvents.emit(GameEvent.RollStarted)
 
-            // Determine formula based on type
-            val formula = if (card.visualType == DiceType.CUSTOM) {
-                currentState.customFormula
-            } else if (card.isMutable) {
-                // Standard Dice (D4, D6...) always use the interactive controls
-                val count = currentState.customDiceCount
-                val mod = currentState.customModifier
-                val faces = card.visualType.faces
-                val sign = if (mod >= 0) "+" else "" 
-                "${count}d${faces}${if (mod != 0) "$sign$mod" else ""}"
-            } else {
-                // User Action Card (fixed formula)
-                card.formula
-            }
-            
             // Check for Cheat/Debug overrides
             val forcedD20Result = if (currentState.cheatNat20) 20 else if (currentState.cheatNat1) 1 else null
 
-            // 1. Parse and calculate the final result
-            val result = DiceParser.parseAndRoll(formula, rollMode, forcedD20Result)
-
-            // Calculate display values immediately
-            val diceRolls = result.rolls.filter { it.die !is ConstantDie }
-            val hasDice = diceRolls.isNotEmpty()
+            var resultTotal = 0
+            var resultString = ""
+            var breakdownString = ""
+            var isOverallNat20 = false
+            var isOverallNat1 = false
             
-            // Default: Main display shows the Grand Total
-            var finalDisplay1 = result.total.toString()
-            var finalDisplay2 = "1"
-            
-            // Critical Detection Variables
-            var isNat20 = false
-            var isNat1 = false
+            // Animation variables
+            var maxAnimationValue = 20
+            var finalDisplay1 = "0"
+            var finalDisplay2 = "0"
 
-            if (rollMode == RollMode.NORMAL) {
-                // Normal Mode: Main die shows total, Ghost die (if ever shown) shows same
-                finalDisplay2 = finalDisplay1
+            if (card.type == ActionCardType.COMBO) {
+                // COMBO LOGIC
+                val steps = parseSteps(card.steps)
+                val sbResult = StringBuilder()
+                val sbBreakdown = StringBuilder()
+                var previousAttackCrit = false
+                var previousAttackHit = true // Assume hit initially
                 
-                // Normal Mode Critical Detection:
-                // Only if it is a single D20 roll? Or ANY D20 roll in the formula?
-                // RAW usually implies the "Attack Roll" d20.
-                // We'll detect if ANY kept d20 roll is 20 or 1.
-                // Since this is Normal mode, all rolled dice are "kept".
-                 isNat20 = diceRolls.any { 
-                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20 
+                // Track total animation magnitude
+                maxAnimationValue = 0
+
+                // FIX: Track display values for Adv/Dis
+                var primaryDisplayValue = ""
+                var secondaryDisplayValue = ""
+                var displayAttackFound = false
+
+                for ((index, step) in steps.withIndex()) {
+                    // Conditions
+                    if (step.isAttack) {
+                        // Reset flags for new attack sequence
+                        previousAttackCrit = false
+                        previousAttackHit = true
+                    } else {
+                        // Damage step: Skip if previous Attack missed
+                        if (!previousAttackHit) {
+                            sbBreakdown.append("\n${step.name}: Skipped (Miss)")
+                            continue
+                        }
+                    }
+
+                    // Apply Crit Multiplier
+                    val formulaToRoll = if (!step.isAttack && previousAttackCrit) {
+                        DiceParser.doubleDice(step.formula)
+                    } else {
+                        step.formula
+                    }
+
+                    // Roll Step
+                    val result = DiceParser.parseAndRoll(formulaToRoll, rollMode, forcedD20Result)
+                    
+                    // Check Crit/Fumble
+                    // Only standard D20s are candidates for critical hits/misses in this context
+                    val d20Rolls = result.rolls.filter { it.die is StandardDie && (it.die as StandardDie).faces == 20 }
+                    var stepNat20 = false
+                    var stepNat1 = false
+                    
+                    if (d20Rolls.isNotEmpty()) {
+                        if (rollMode == RollMode.NORMAL) {
+                            // Check any d20 rolled a 20 (though usually just 1 in combo unless formula has more)
+                            stepNat20 = d20Rolls.any { it.value == 20 }
+                            stepNat1 = d20Rolls.any { it.value == 1 }
+                        } else {
+                            // Adv/Dis: Check kept value (DiceParser logic keeps result in .value)
+                            stepNat20 = d20Rolls.any { it.value == 20 }
+                            stepNat1 = d20Rolls.any { it.value == 1 }
+                        }
+                    }
+
+                    if (step.isAttack) {
+                        previousAttackCrit = stepNat20
+                        if (stepNat20) isOverallNat20 = true
+                        if (stepNat1) isOverallNat1 = true
+                        
+                        // Hit Logic:
+                        // 1. Nat 1 is always Miss
+                        // 2. Nat 20 is always Hit
+                        // 3. If Threshold > 0, Total >= Threshold is Hit
+                        // 4. If Threshold == 0, Default is Hit (unless Nat 1)
+                        
+                        if (stepNat1) {
+                            previousAttackHit = false
+                        } else if (stepNat20) {
+                            previousAttackHit = true
+                        } else if (step.threshold > 0) {
+                            previousAttackHit = result.total >= step.threshold
+                        } else {
+                            previousAttackHit = true // No AC defined, assume hit (unless Nat 1)
+                        }
+                    }
+
+                    // --- NEW LOGIC START ---
+                    val hasD20 = d20Rolls.isNotEmpty()
+                    val shouldUseForDisplay = if (rollMode == RollMode.NORMAL) {
+                        true 
+                    } else {
+                        if (!displayAttackFound) {
+                            if (step.isAttack || hasD20) {
+                                displayAttackFound = true
+                            }
+                            true
+                        } else {
+                            false 
+                        }
+                    }
+
+                    if (shouldUseForDisplay) {
+                        primaryDisplayValue = result.total.toString()
+                        if (rollMode == RollMode.NORMAL) {
+                            secondaryDisplayValue = primaryDisplayValue
+                        } else {
+                             val delta = result.rolls.sumOf { roll ->
+                                 val kept = roll.value
+                                 val discarded = roll.discardedValue ?: kept 
+                                 (discarded - kept) * roll.coefficient
+                             }
+                             secondaryDisplayValue = (result.total + delta).toString()
+                        }
+                    }
+                    // --- NEW LOGIC END ---
+
+                    // Build Strings
+                    if (index > 0) sbResult.append(" / ")
+                    sbResult.append("${step.name}: ${result.total}")
+                    if (stepNat20 && step.isAttack) sbResult.append(" (CRIT!)")
+                    if (stepNat1 && step.isAttack) sbResult.append(" (MISS!)")
+                    else if (step.isAttack && !previousAttackHit) sbResult.append(" (Miss)") // Normal miss
+
+                    if (index > 0) sbBreakdown.append(" | ")
+                    sbBreakdown.append("${step.name}: ${result.breakdown}")
+                    if (step.isAttack && step.threshold > 0) {
+                        sbBreakdown.append(" vs AC ${step.threshold}")
+                    }
+                    
+                    resultTotal = result.total
+                    maxAnimationValue += result.maxTotal
                 }
-                 isNat1 = diceRolls.any { 
-                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1 
-                }
+                
+                resultString = sbResult.toString()
+                breakdownString = sbBreakdown.toString()
+                finalDisplay1 = if (primaryDisplayValue.isNotEmpty()) primaryDisplayValue else resultTotal.toString()
+                finalDisplay2 = if (secondaryDisplayValue.isNotEmpty()) secondaryDisplayValue else "1"
+
             } else {
-                // Adv/Dis Mode: 
-                // Main die shows the Grand Total (using the kept d20)
-                
-                // Critical Detection Logic for Adv/Dis:
-                // We must check ONLY the d20 that was KEPT (used in calculation).
-                // The DiceParser logic sets 'value' to the kept value, and 'discardedValue' to the dropped one.
-                // So checking 'it.value' is sufficient for the KEPT result.
-                
-                // Find the D20 roll term(s)
-                 isNat20 = diceRolls.any { 
-                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20
-                }
-                 isNat1 = diceRolls.any { 
-                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1
+                // SIMPLE or FORMULA logic
+                val formula = if (card.type == ActionCardType.SIMPLE) {
+                    val count = currentState.customDiceCount
+                    val mod = currentState.customModifier
+                    val faces = card.visualType.faces
+                    val sign = if (mod >= 0) "+" else "" 
+                    "${count}d${faces}${if (mod != 0) "$sign$mod" else ""}"
+                } else {
+                    card.formula.ifBlank { currentState.customFormula }
                 }
 
-                // Calculate Ghost Die (Alternative Total)
-                val delta = diceRolls.sumOf { roll ->
-                    val kept = roll.value
-                    val discarded = roll.discardedValue ?: kept 
-                    (discarded - kept) * roll.coefficient
-                }
+                val result = DiceParser.parseAndRoll(formula, rollMode, forcedD20Result)
                 
-                val altTotal = result.total + delta
-                finalDisplay2 = altTotal.toString()
-            }
-            
-            // Resolve conflict if multiple dice (e.g. 2d20) have different crits?
-            // If ANY kept d20 is a 20 -> Critical Hit takes precedence?
-            // Usually attacks are one d20. But for multi-attack formulas, let's prioritize Nat 20.
-            val finalCriticalState = if (isNat20) CriticalState.CRIT_HIT else if (isNat1) CriticalState.CRIT_MISS else CriticalState.NORMAL
+                // Detect Criticals
+                val diceRolls = result.rolls.filter { it.die !is ConstantDie }
+                val hasDice = diceRolls.isNotEmpty()
+                
+                finalDisplay1 = result.total.toString()
+                finalDisplay2 = "1"
 
-            // Determine animation upper bound
-            val maxAnimationValue = if (hasDice) {
-                diceRolls.sumOf { it.die.maxValue() }
-            } else {
-                result.maxTotal
-            }
-
-            val animationDuration = 500L
-            val updateInterval = 60L
-            val startTime = System.currentTimeMillis()
-            
-            var lastDisplayValueStr = _internalState.value.displayedResult
-
-            while (System.currentTimeMillis() < startTime + animationDuration) {
-                // 2. Animation Logic
-                var nextValue = 0
-                var nextValue2 = 0
-                if (result.rolls.isNotEmpty()) {
-                    // Animate up to the max possible face value sum, to be realistic
-                    nextValue = kotlin.random.Random.nextInt(1, maxAnimationValue + 1)
-                    if (rollMode != RollMode.NORMAL) {
-                        nextValue2 = kotlin.random.Random.nextInt(1, maxAnimationValue + 1)
+                if (rollMode == RollMode.NORMAL) {
+                    finalDisplay2 = finalDisplay1
+                     isOverallNat20 = diceRolls.any { 
+                        it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20 
+                    }
+                     isOverallNat1 = diceRolls.any { 
+                        it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1 
                     }
                 } else {
-                    nextValue = 1
-                    nextValue2 = 1
+                     isOverallNat20 = diceRolls.any { 
+                        it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20
+                    }
+                     isOverallNat1 = diceRolls.any { 
+                        it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1
+                    }
+                    val delta = diceRolls.sumOf { roll ->
+                        val kept = roll.value
+                        val discarded = roll.discardedValue ?: kept 
+                        (discarded - kept) * roll.coefficient
+                    }
+                    finalDisplay2 = (result.total + delta).toString()
                 }
+                
+                resultTotal = result.total
+                resultString = result.total.toString()
+                breakdownString = result.breakdown
+                maxAnimationValue = result.maxTotal
+            }
 
+            val finalCriticalState = if (isOverallNat20) CriticalState.CRIT_HIT else if (isOverallNat1) CriticalState.CRIT_MISS else CriticalState.NORMAL
+
+            // Animation
+            val animationDuration = 500L
+            val startTime = System.currentTimeMillis()
+            while (System.currentTimeMillis() < startTime + animationDuration) {
+                var nextValue = kotlin.random.Random.nextInt(1, maxAnimationValue + 1)
+                var nextValue2 = if (rollMode != RollMode.NORMAL && card.type != ActionCardType.COMBO) kotlin.random.Random.nextInt(1, maxAnimationValue + 1) else nextValue
+                
                 _internalState.value = _internalState.value.copy(
                     displayedResult = nextValue.toString(),
                     displayedResult2 = nextValue2.toString()
                 )
-                delay(updateInterval)
+                delay(60L)
             }
 
-            // 3. Set Final Result & Save
-            val newHistoryItem = RollHistoryItem(
-                result = result.total.toString(),
-                breakdown = result.breakdown,
-                isNat20 = isNat20,
-                isNat1 = isNat1
-            )
-            
-            val activeSession = _internalState.value.activeSession
-            
             val newState = _internalState.value.copy(
                 isRolling = false,
                 displayedResult = finalDisplay1,
                 displayedResult2 = finalDisplay2,
-                finalResult = result.total,
-                breakdown = result.breakdown,
+                finalResult = resultTotal,
+                breakdown = breakdownString,
                 criticalState = finalCriticalState
             )
             
+            // Save History
+            val activeSession = _internalState.value.activeSession
             if (activeSession != null) {
-                repository.addRoll(activeSession.id, result.total.toString(), result.breakdown, isNat20, isNat1)
+                repository.addRoll(activeSession.id, resultString, breakdownString, isOverallNat20, isOverallNat1, card.name)
                 _internalState.value = newState
             } else {
-                _internalState.value = newState.copy(
-                    history = listOf(newHistoryItem) + _internalState.value.history
-                )
+                val item = RollHistoryItem(resultString, breakdownString, isOverallNat20, isOverallNat1, card.name)
+                _internalState.value = newState.copy(history = listOf(item) + _internalState.value.history)
             }
             
-            // 4. Emit Event
-            // Detect Criticals in ANY D20 roll within the result
-            // (Re-using the logic derived above)
             _gameEvents.emit(
                 GameEvent.RollFinished(
-                    result = result.total, 
+                    result = resultTotal, 
                     type = card.visualType,
-                    isNat20 = isNat20,
-                    isNat1 = isNat1
+                    isNat20 = isOverallNat20,
+                    isNat1 = isOverallNat1
                 )
             )
         }
     }
     
     // Manage Custom Action Cards
-    fun addActionCard(name: String, formula: String, visual: DiceType, isMutable: Boolean) {
+    fun addActionCard(name: String, formula: String, visual: DiceType, type: ActionCardType, steps: String = "") {
         viewModelScope.launch {
             repository.insertActionCard(
                 ActionCard(
@@ -464,7 +532,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     formula = formula,
                     visualType = visual,
                     isSystem = false,
-                    isMutable = isMutable
+                    type = type,
+                    steps = steps
                 )
             )
         }
@@ -473,6 +542,17 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteActionCard(card: ActionCard) {
         viewModelScope.launch {
             repository.deleteActionCard(card)
+        }
+    }
+
+    private fun parseSteps(stepsStr: String): List<ComboStep> {
+        if (stepsStr.isBlank()) return emptyList()
+        return stepsStr.split("|").mapNotNull { 
+            val parts = it.split(";")
+            if (parts.size >= 3) {
+                val thresh = if (parts.size >= 4) parts[3].toIntOrNull() ?: 0 else 0
+                ComboStep(parts[0], parts[1], parts[2].toBoolean(), thresh)
+            } else null
         }
     }
 }

@@ -17,4 +17,18 @@ class Converters {
             DiceType.D20 // Fallback
         }
     }
+
+    @TypeConverter
+    fun fromActionCardType(value: ActionCardType): String {
+        return value.name
+    }
+
+    @TypeConverter
+    fun toActionCardType(value: String): ActionCardType {
+        return try {
+            ActionCardType.valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            ActionCardType.FORMULA // Fallback
+        }
+    }
 }

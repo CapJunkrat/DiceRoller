@@ -6,16 +6,19 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
@@ -32,13 +35,15 @@ import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.johnz.diceroller.DiceParser
 import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.db.ActionCard
+import com.johnz.diceroller.data.db.ActionCardType
 
-// Custom ContentCopy Icon (since we might not have it in dependencies)
+// Custom ContentCopy Icon
 val CopyIcon: ImageVector = ImageVector.Builder(
     name = "ContentCopy",
     defaultWidth = 24.dp,
@@ -85,7 +90,6 @@ fun SettingsScreen(
     val isSystemHapticsEnabled by viewModel.isSystemHapticsEnabled.collectAsState()
     val allCards by viewModel.allActionCards.collectAsState()
     
-    // Debug State
     val debugModeEnabled by viewModel.debugModeEnabled.collectAsState()
     val alwaysNat20 by viewModel.alwaysNat20.collectAsState()
     val alwaysNat1 by viewModel.alwaysNat1.collectAsState()
@@ -97,7 +101,6 @@ fun SettingsScreen(
     var cardToDelete by remember { mutableStateOf<ActionCard?>(null) }
     var showCreditsDialog by remember { mutableStateOf(false) }
     
-    // Tap counter for enabling debug mode
     var titleTapCount by remember { mutableStateOf(0) }
 
     if (showAddCardDialog) {
@@ -106,8 +109,8 @@ fun SettingsScreen(
             confirmText = "Create",
             existingNames = allCards.map { it.name },
             onDismiss = { showAddCardDialog = false },
-            onConfirm = { name, formula, visual, isMutable ->
-                viewModel.addCustomActionCard(name, formula, visual, isMutable)
+            onConfirm = { name, formula, visual, type, steps ->
+                viewModel.addCustomActionCard(name, formula, visual, type, steps)
                 showAddCardDialog = false
             }
         )
@@ -117,18 +120,20 @@ fun SettingsScreen(
         ActionCardDialog(
             title = "Edit Action Card",
             confirmText = "Update",
-            existingNames = allCards.filter { it.id != cardToEdit!!.id }.map { it.name }, // Exclude self
+            existingNames = allCards.filter { it.id != cardToEdit!!.id }.map { it.name },
             initialName = cardToEdit!!.name,
             initialFormula = cardToEdit!!.formula,
             initialVisual = cardToEdit!!.visualType,
-            initialIsMutable = cardToEdit!!.isMutable,
+            initialType = cardToEdit!!.type,
+            initialSteps = cardToEdit!!.steps,
             onDismiss = { cardToEdit = null },
-            onConfirm = { name, formula, visual, isMutable ->
+            onConfirm = { name, formula, visual, type, steps ->
                 val updatedCard = cardToEdit!!.copy(
                     name = name,
                     formula = formula,
                     visualType = visual,
-                    isMutable = isMutable
+                    type = type,
+                    steps = steps
                 )
                 viewModel.updateActionCard(updatedCard)
                 cardToEdit = null
@@ -190,8 +195,6 @@ fun SettingsScreen(
                                 titleTapCount++
                                 if (titleTapCount >= 10) {
                                     viewModel.setDebugModeEnabled(true)
-                                    // Feedback will be dependent on whether the build is Debug
-                                    // But showing the toast anyway as "try"
                                     Toast.makeText(context, "Debug Mode Enabled (If Debug Build)", Toast.LENGTH_SHORT).show()
                                     titleTapCount = 0
                                 }
@@ -201,10 +204,7 @@ fun SettingsScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -245,31 +245,22 @@ fun SettingsScreen(
                             modifier = Modifier.padding(end = 16.dp)
                         )
                         Column {
-                            Text(
-                                text = "Haptic Feedback Disabled",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = "Tap to enable system haptics.",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                            Text(text = "Haptic Feedback Disabled", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text(text = "Tap to enable system haptics.", style = MaterialTheme.typography.bodyMedium)
                         }
                     }
                 }
             }
 
-            // --- Action Cards Management ---
             Text(
                 text = "Action Cards",
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
             
-            // Sort: System cards first, then Custom cards
             val sortedCards = allCards.sortedWith(
-                compareBy<ActionCard> { !it.isSystem } // false (System) < true (Custom)
-                .thenBy { it.id } // Stable sort for creation order
+                compareBy<ActionCard> { !it.isSystem }
+                .thenBy { it.id }
             )
             
             if (sortedCards.isEmpty()) {
@@ -280,7 +271,6 @@ fun SettingsScreen(
                 )
             }
             
-            // Use Column for items since we are inside a verticalScroll Column
             Column {
                 sortedCards.forEach { card ->
                     ActionCardRow(
@@ -294,9 +284,7 @@ fun SettingsScreen(
             
             Button(
                 onClick = { showAddCardDialog = true },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
@@ -305,116 +293,40 @@ fun SettingsScreen(
             
             Divider(modifier = Modifier.padding(vertical = 16.dp))
             
-            // --- Donate Section ---
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToDonate() }
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = "Donate",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = "Donate",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = "Support the developer",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Divider(modifier = Modifier.padding(horizontal = 16.dp))
-
-            // --- Credits Section ---
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showCreditsDialog = true }
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = "Credits",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        text = "Credits",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = "Attributions & Licenses",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
+            // --- Debug ---
             if (debugModeEnabled) {
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
-                
                 Text(
                     text = "Debug Mode",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
-
-                // Requirement: Explicit Manual Disable Button
                 Button(
                     onClick = { viewModel.setDebugModeEnabled(false) },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("Disable Debug Mode")
                 }
-                
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Always Nat 20")
-                    Switch(
-                        checked = alwaysNat20,
-                        onCheckedChange = { viewModel.setAlwaysNat20(it) }
-                    )
+                    Switch(checked = alwaysNat20, onCheckedChange = { viewModel.setAlwaysNat20(it) })
                 }
-                
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text("Always Nat 1")
-                    Switch(
-                        checked = alwaysNat1,
-                        onCheckedChange = { viewModel.setAlwaysNat1(it) }
-                    )
+                    Switch(checked = alwaysNat1, onCheckedChange = { viewModel.setAlwaysNat1(it) })
                 }
             }
-            
             Spacer(modifier = Modifier.height(32.dp))
         }
     }
@@ -430,21 +342,20 @@ fun ActionCardRow(card: ActionCard, onEdit: () -> Unit, onDuplicate: () -> Unit,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = card.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            val desc = if (card.isMutable) "Adjustable (${card.visualType.label})" else card.formula
+            val desc = when(card.type) {
+                ActionCardType.SIMPLE -> "Simple Roll (${card.visualType.label})"
+                ActionCardType.FORMULA -> "Formula: ${card.formula}"
+                ActionCardType.COMBO -> "Action Combo"
+            }
             Text(text = desc, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
         }
-        
-        IconButton(onClick = onDuplicate) {
-            Icon(CopyIcon, contentDescription = "Duplicate", tint = MaterialTheme.colorScheme.primary)
-        }
-        IconButton(onClick = onEdit) {
-            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
-        }
+        IconButton(onClick = onDuplicate) { Icon(CopyIcon, contentDescription = "Duplicate", tint = MaterialTheme.colorScheme.primary) }
+        IconButton(onClick = onEdit) { Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary) }
+        IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error) }
     }
 }
+
+data class UiComboStep(val id: Int, var name: String, var formula: String, var isAttack: Boolean, var threshold: String = "10")
 
 @Composable
 fun ActionCardDialog(
@@ -454,37 +365,83 @@ fun ActionCardDialog(
     initialName: String = "",
     initialFormula: String = "",
     initialVisual: DiceType = DiceType.D20,
-    initialIsMutable: Boolean = false,
+    initialType: ActionCardType = ActionCardType.SIMPLE,
+    initialSteps: String = "",
     onDismiss: () -> Unit,
-    onConfirm: (String, String, DiceType, Boolean) -> Unit
+    onConfirm: (String, String, DiceType, ActionCardType, String) -> Unit
 ) {
     var name by remember { mutableStateOf(initialName) }
     var formula by remember { mutableStateOf(initialFormula) }
     var selectedVisual by remember { mutableStateOf(initialVisual) }
-    var selectedBaseDie by remember { mutableStateOf(if (initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) initialVisual else DiceType.D20) }
+    var selectedType by remember { mutableStateOf(initialType) }
     
-    // Determine initial mode selection
-    // 0 = Fixed, 1 = Adjustable
-    // If opening for Edit, infer mode from isMutable
-    var modeSelection by remember { mutableStateOf(if (initialIsMutable) 1 else 0) }
-    
-    // Update selectedBaseDie if we are in Adjustable mode and editing
-    LaunchedEffect(Unit) {
-        if (initialIsMutable && initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) {
-            selectedBaseDie = initialVisual
+    // Combo Steps State
+    val initialComboSteps = remember {
+        if (initialSteps.isNotBlank()) {
+            initialSteps.split("|").mapIndexedNotNull { index, s ->
+                val parts = s.split(";")
+                if (parts.size >= 3) {
+                    val thresholdVal = if (parts.size >= 4) parts[3] else "10"
+                    UiComboStep(index, parts[0], parts[1], parts[2].toBoolean(), thresholdVal)
+                } else null
+            }.toMutableStateList()
+        } else {
+            mutableStateListOf(UiComboStep(0, "Attack", "1d20+5", true, "10"), UiComboStep(1, "Damage", "1d8+3", false))
         }
+    }
+    
+    // Ensure at least two steps if loading corrupted/empty data
+    LaunchedEffect(initialComboSteps.size) {
+        if (initialComboSteps.size < 2) {
+            if (initialComboSteps.isEmpty()) {
+                initialComboSteps.add(UiComboStep(0, "Attack", "1d20+5", true, "10"))
+            }
+            if (initialComboSteps.size < 2) {
+                initialComboSteps.add(UiComboStep(1, "Damage", "1d8+3", false))
+            }
+        }
+    }
+    
+    // Base die for SIMPLE mode
+    var selectedBaseDie by remember { mutableStateOf(if (initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) initialVisual else DiceType.D20) }
+    LaunchedEffect(Unit) {
+        if (initialType == ActionCardType.SIMPLE && initialVisual.faces > 0) selectedBaseDie = initialVisual
     }
     
     var validationError by remember { mutableStateOf<String?>(null) }
     var showErrorDialog by remember { mutableStateOf(false) }
+    var stepIndexToDelete by remember { mutableStateOf(-1) }
 
     if (showErrorDialog && validationError != null) {
         AlertDialog(
             onDismissRequest = { showErrorDialog = false },
             title = { Text("Invalid Input") },
             text = { Text(validationError!!) },
+            confirmButton = { TextButton(onClick = { showErrorDialog = false }) { Text("OK") } }
+        )
+    }
+
+    if (stepIndexToDelete >= 0) {
+        AlertDialog(
+            onDismissRequest = { stepIndexToDelete = -1 },
+            title = { Text("Delete Step?") },
+            text = { Text("This step has content. Are you sure you want to remove it?") },
             confirmButton = {
-                TextButton(onClick = { showErrorDialog = false }) { Text("OK") }
+                TextButton(
+                    onClick = {
+                        if (stepIndexToDelete in initialComboSteps.indices) {
+                            initialComboSteps.removeAt(stepIndexToDelete)
+                        }
+                        stepIndexToDelete = -1
+                    }
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { stepIndexToDelete = -1 }) {
+                    Text("Cancel")
+                }
             }
         )
     }
@@ -493,118 +450,169 @@ fun ActionCardDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                
-                Text(
-                    text = "Action Mode / Roll Behavior:",
-                    style = MaterialTheme.typography.titleSmall
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it }, 
+                    label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
-                Row(
-                    Modifier.fillMaxWidth().selectable(selected = (modeSelection == 0), onClick = { modeSelection = 0 }),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(selected = (modeSelection == 0), onClick = { modeSelection = 0 })
-                    Text("Fixed Roll", style = MaterialTheme.typography.bodyMedium)
-                }
-                Row(
-                    Modifier.fillMaxWidth().selectable(selected = (modeSelection == 1), onClick = { modeSelection = 1 }),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    RadioButton(selected = (modeSelection == 1), onClick = { modeSelection = 1 })
-                    Text("Adjustable Roll", style = MaterialTheme.typography.bodyMedium)
-                }
 
+                Text("Card Type:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { selectedType = ActionCardType.SIMPLE }) {
+                        RadioButton(selected = selectedType == ActionCardType.SIMPLE, onClick = { selectedType = ActionCardType.SIMPLE })
+                        Text("Simple Roll (Adjustable)")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { selectedType = ActionCardType.FORMULA }) {
+                        RadioButton(selected = selectedType == ActionCardType.FORMULA, onClick = { selectedType = ActionCardType.FORMULA })
+                        Text("Formula Roll (Fixed)")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { selectedType = ActionCardType.COMBO }) {
+                        RadioButton(selected = selectedType == ActionCardType.COMBO, onClick = { selectedType = ActionCardType.COMBO })
+                        Text("Action Combo (Multi-step)")
+                    }
+                }
+                
                 Divider(modifier = Modifier.padding(vertical = 4.dp))
 
-                OutlinedTextField(
-                    value = name, 
-                    onValueChange = { name = it }, 
-                    label = { Text("Name") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                if (modeSelection == 0) {
-                    OutlinedTextField(
-                        value = formula, 
-                        onValueChange = { formula = it }, 
-                        label = { Text("Formula (e.g. 2d6 + 3)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    Text("Icon / Visual:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
-                            val isSelected = selectedVisual == type
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedVisual = type },
-                                label = { Text(type.label) }
-                            )
+                when (selectedType) {
+                    ActionCardType.SIMPLE -> {
+                        Text("Select Base Die:", style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
+                                FilterChip(
+                                    selected = selectedBaseDie == type,
+                                    onClick = { selectedBaseDie = type },
+                                    label = { Text(type.label) }
+                                )
+                            }
                         }
                     }
-                } else {
-                    Text("Select Base Die:", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top=8.dp))
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
-                            val isSelected = selectedBaseDie == type
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = { selectedBaseDie = type },
-                                label = { Text(type.label) }
-                            )
+                    ActionCardType.FORMULA -> {
+                        OutlinedTextField(
+                            value = formula, onValueChange = { formula = it }, 
+                            label = { Text("Formula (e.g. 2d6+3)") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                        )
+                        Text("Icon:", style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
+                                FilterChip(
+                                    selected = selectedVisual == type,
+                                    onClick = { selectedVisual = type },
+                                    label = { Text(type.label) }
+                                )
+                            }
                         }
                     }
-                    Text(
-                        text = "Defaults to 1${selectedBaseDie.label.lowercase()}. You can adjust count/modifier when rolling.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
+                    ActionCardType.COMBO -> {
+                        Text("Steps:", style = MaterialTheme.typography.labelLarge)
+                        initialComboSteps.forEachIndexed { index, step ->
+                            val stepType = if (index == 0) "Attack" else "Damage"
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Step ${index + 1} ($stepType)", fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                        
+                                        // Only allow deleting steps after the first two (Index 0 and 1 are fixed)
+                                        if (index > 1) {
+                                            IconButton(onClick = { 
+                                                if (step.name.isNotBlank() || step.formula.isNotBlank()) {
+                                                    stepIndexToDelete = index
+                                                } else {
+                                                    initialComboSteps.removeAt(index)
+                                                }
+                                            }) {
+                                                Icon(Icons.Default.Close, contentDescription = "Remove")
+                                            }
+                                        }
+                                    }
+                                    OutlinedTextField(
+                                        value = step.name, onValueChange = { initialComboSteps[index] = step.copy(name = it) },
+                                        label = { Text("Step Name") }, modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = step.formula, onValueChange = { initialComboSteps[index] = step.copy(formula = it) },
+                                        label = { Text("Formula") }, modifier = Modifier.fillMaxWidth()
+                                    )
+                                    
+                                    // Target AC only for the first step (Attack)
+                                    if (index == 0) {
+                                        OutlinedTextField(
+                                            value = step.threshold, 
+                                            onValueChange = { 
+                                                if (it.all { char -> char.isDigit() }) initialComboSteps[index] = step.copy(threshold = it)
+                                            },
+                                            label = { Text("Target AC") },
+                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Button(onClick = { initialComboSteps.add(UiComboStep(initialComboSteps.size, "", "", false)) }) {
+                            Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Add Damage Step")
+                        }
+                        Text("Icon:", style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(DiceType.values().filter { it.faces > 0 && it != DiceType.CUSTOM }) { type ->
+                                FilterChip(
+                                    selected = selectedVisual == type,
+                                    onClick = { selectedVisual = type },
+                                    label = { Text(type.label) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
             Button(
-                onClick = { 
-                    // Validation Logic
-                    if (name.isBlank()) {
-                        validationError = "Name cannot be empty."
-                        showErrorDialog = true
-                        return@Button
-                    }
+                onClick = {
+                    if (name.isBlank()) { validationError = "Name required"; showErrorDialog = true; return@Button }
                     
-                    if (existingNames.any { it.equals(name, ignoreCase = true) }) {
-                        validationError = "A card with this name already exists."
-                        showErrorDialog = true
-                        return@Button
-                    }
+                    var finalFormula = formula
+                    var finalSteps = ""
+                    
+                    if (selectedType == ActionCardType.SIMPLE) {
+                        finalFormula = "1d${selectedBaseDie.faces}"
+                        selectedVisual = selectedBaseDie
+                    } else if (selectedType == ActionCardType.FORMULA) {
+                        if (formula.isBlank() || !DiceParser.isValid(formula)) {
+                            validationError = "Invalid formula"; showErrorDialog = true; return@Button
+                        }
+                    } else if (selectedType == ActionCardType.COMBO) {
+                        if (initialComboSteps.isEmpty()) { validationError = "At least one step required"; showErrorDialog = true; return@Button }
+                        val sb = StringBuilder()
+                        initialComboSteps.forEachIndexed { i, s ->
+                            if (s.name.isBlank() || s.formula.isBlank()) { validationError = "Step fields cannot be empty"; showErrorDialog = true; return@Button }
+                            
+                            // VALIDATION ADDED HERE
+                            if (!DiceParser.isValid(s.formula)) {
+                                validationError = "Invalid formula in Step ${i + 1}: ${s.formula}"; showErrorDialog = true; return@Button
+                            }
 
-                    if (modeSelection == 0) {
-                        if (formula.isBlank()) {
-                            validationError = "Formula cannot be empty."
-                            showErrorDialog = true
-                            return@Button
+                            if (i > 0) sb.append("|")
+                            
+                            // Force First Step = Attack, Others = Damage
+                            val isAttack = (i == 0)
+                            val thresh = if (isAttack) (if (s.threshold.isBlank()) "10" else s.threshold) else ""
+                            
+                            sb.append("${s.name};${s.formula};${isAttack};${thresh}")
                         }
-                        if (!DiceParser.isValid(formula)) {
-                            validationError = "Invalid formula format. Use standard notation like '2d6+3'."
-                            showErrorDialog = true
-                            return@Button
-                        }
-                        onConfirm(name, formula, selectedVisual, false)
-                    } else {
-                        val generatedFormula = "1d${selectedBaseDie.faces}"
-                        onConfirm(name, generatedFormula, selectedBaseDie, true)
+                        finalSteps = sb.toString()
+                        finalFormula = "COMBO" // placeholder
                     }
+                    onConfirm(name, finalFormula, selectedVisual, selectedType, finalSteps)
                 }
-            ) {
-                Text(confirmText)
-            }
+            ) { Text(confirmText) }
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }

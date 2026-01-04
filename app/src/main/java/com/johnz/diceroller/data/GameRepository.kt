@@ -2,6 +2,7 @@ package com.johnz.diceroller.data
 
 import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.db.ActionCard
+import com.johnz.diceroller.data.db.ActionCardType
 import com.johnz.diceroller.data.db.AppDatabase
 import com.johnz.diceroller.data.db.GameSession
 import com.johnz.diceroller.data.db.RollRecord
@@ -12,6 +13,7 @@ data class RollData(
     val breakdown: String,
     val isNat20: Boolean = false,
     val isNat1: Boolean = false,
+    val cardName: String = "",
     val timestamp: Long
 )
 
@@ -35,13 +37,14 @@ class GameRepository(private val database: AppDatabase) {
         return dao.getSessionById(id)
     }
 
-    suspend fun addRoll(sessionId: Int, result: String, breakdown: String, isNat20: Boolean = false, isNat1: Boolean = false) {
+    suspend fun addRoll(sessionId: Int, result: String, breakdown: String, isNat20: Boolean = false, isNat1: Boolean = false, cardName: String = "") {
         val roll = RollRecord(
             sessionId = sessionId, 
             result = result, 
             breakdown = breakdown,
             isNat20 = isNat20,
-            isNat1 = isNat1
+            isNat1 = isNat1,
+            cardName = cardName
         )
         dao.insertRoll(roll)
         dao.updateLastPlayed(sessionId, System.currentTimeMillis())
@@ -56,6 +59,7 @@ class GameRepository(private val database: AppDatabase) {
                 breakdown = it.breakdown, 
                 isNat20 = it.isNat20,
                 isNat1 = it.isNat1,
+                cardName = it.cardName,
                 timestamp = it.timestamp
             )
         }
@@ -87,7 +91,7 @@ class GameRepository(private val database: AppDatabase) {
                     formula = "1d6",
                     visualType = DiceType.D6,
                     isSystem = true,
-                    isMutable = true
+                    type = ActionCardType.SIMPLE
                 )
             )
             // 2. D20
@@ -97,7 +101,7 @@ class GameRepository(private val database: AppDatabase) {
                     formula = "1d20",
                     visualType = DiceType.D20,
                     isSystem = true,
-                    isMutable = true
+                    type = ActionCardType.SIMPLE
                 )
             )
             // 3. Attack (1d20 + 1d4 + 2)
@@ -107,7 +111,7 @@ class GameRepository(private val database: AppDatabase) {
                     formula = "1d20+1d4+2",
                     visualType = DiceType.D20, // Using D20 visual for attack
                     isSystem = true,
-                    isMutable = false // Complex formula, so not mutable count/mod
+                    type = ActionCardType.FORMULA
                 )
             )
         }

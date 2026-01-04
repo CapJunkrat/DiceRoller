@@ -24,5 +24,6 @@ data class RollRecord(
     val breakdown: String,
     val isNat20: Boolean = false,
     val isNat1: Boolean = false,
+    val cardName: String = "",
     val timestamp: Long = System.currentTimeMillis()
 )

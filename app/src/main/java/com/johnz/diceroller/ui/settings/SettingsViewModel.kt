@@ -11,6 +11,7 @@ import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.SettingsRepository
 import com.johnz.diceroller.data.db.ActionCard
+import com.johnz.diceroller.data.db.ActionCardType
 import com.johnz.diceroller.data.db.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +88,13 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
     
-    fun addCustomActionCard(name: String, formula: String, visual: DiceType, isMutable: Boolean) {
+    fun addCustomActionCard(
+        name: String, 
+        formula: String, 
+        visual: DiceType, 
+        type: ActionCardType,
+        steps: String = ""
+    ) {
         viewModelScope.launch {
             gameRepository.insertActionCard(
                 ActionCard(
@@ -95,7 +102,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                     formula = formula,
                     visualType = visual,
                     isSystem = false,
-                    isMutable = isMutable
+                    type = type,
+                    steps = steps
                 )
             )
         }
