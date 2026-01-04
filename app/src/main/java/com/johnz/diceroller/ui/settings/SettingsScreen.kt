@@ -190,7 +190,9 @@ fun SettingsScreen(
                                 titleTapCount++
                                 if (titleTapCount >= 10) {
                                     viewModel.setDebugModeEnabled(true)
-                                    Toast.makeText(context, "Debug Mode Enabled!", Toast.LENGTH_SHORT).show()
+                                    // Feedback will be dependent on whether the build is Debug
+                                    // But showing the toast anyway as "try"
+                                    Toast.makeText(context, "Debug Mode Enabled (If Debug Build)", Toast.LENGTH_SHORT).show()
                                     titleTapCount = 0
                                 }
                             }
@@ -361,12 +363,28 @@ fun SettingsScreen(
 
             if (debugModeEnabled) {
                 Divider(modifier = Modifier.padding(vertical = 16.dp))
+                
                 Text(
                     text = "Debug Mode",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
+
+                // Requirement: Explicit Manual Disable Button
+                Button(
+                    onClick = { viewModel.setDebugModeEnabled(false) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Disable Debug Mode")
+                }
                 
                 Row(
                     modifier = Modifier

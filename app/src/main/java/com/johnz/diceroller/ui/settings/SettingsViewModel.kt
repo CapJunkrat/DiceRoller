@@ -4,7 +4,9 @@ import android.app.Application
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.johnz.diceroller.BuildConfig
 import com.johnz.diceroller.DiceType
+import com.johnz.diceroller.data.DebugModeManager
 import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.SettingsRepository
@@ -38,8 +40,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             initialValue = emptyList()
         )
     
-    // We keep this for now to support the "Custom Input" visibility if needed, 
-    // although the UI switch for standard dice visibility is gone.
     val isCustomDiceVisible: StateFlow<Boolean> = settingsRepository.customDiceVisibleFlow
         .stateIn(
             scope = viewModelScope,
@@ -50,27 +50,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isSystemHapticsEnabled = MutableStateFlow(true)
     val isSystemHapticsEnabled: StateFlow<Boolean> = _isSystemHapticsEnabled.asStateFlow()
 
-    // Debug / Cheat Flows
-    val debugModeEnabled: StateFlow<Boolean> = settingsRepository.debugModeEnabledFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = false
-        )
-
-    val alwaysNat20: StateFlow<Boolean> = settingsRepository.alwaysNat20Flow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = false
-        )
-
-    val alwaysNat1: StateFlow<Boolean> = settingsRepository.alwaysNat1Flow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = false
-        )
+    // Debug / Cheat Flows from DebugModeManager
+    val debugModeEnabled: StateFlow<Boolean> = DebugModeManager.debugModeEnabled
+    val alwaysNat20: StateFlow<Boolean> = DebugModeManager.alwaysNat20
+    val alwaysNat1: StateFlow<Boolean> = DebugModeManager.alwaysNat1
 
     init {
         checkSystemHapticsStatus()
@@ -144,20 +127,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     // Debug Actions
     fun setDebugModeEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setDebugModeEnabled(enabled)
+        if (BuildConfig.DEBUG) {
+            DebugModeManager.setDebugModeEnabled(enabled)
         }
     }
 
     fun setAlwaysNat20(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setAlwaysNat20(enabled)
+        if (BuildConfig.DEBUG) {
+            DebugModeManager.setAlwaysNat20(enabled)
         }
     }
 
     fun setAlwaysNat1(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.setAlwaysNat1(enabled)
+        if (BuildConfig.DEBUG) {
+            DebugModeManager.setAlwaysNat1(enabled)
         }
     }
 }

@@ -3,6 +3,7 @@ package com.johnz.diceroller
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.johnz.diceroller.data.DebugModeManager
 import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.RollData
@@ -81,10 +82,10 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     
     private val _internalState = MutableStateFlow(DiceUiState())
 
-    // Combine Cheat Flows first to reduce argument count
+    // Combine Cheat Flows from DebugModeManager
     private val cheatStateFlow = combine(
-        settingsRepository.alwaysNat20Flow,
-        settingsRepository.alwaysNat1Flow
+        DebugModeManager.alwaysNat20,
+        DebugModeManager.alwaysNat1
     ) { nat20, nat1 ->
         CheatState(nat20, nat1)
     }
