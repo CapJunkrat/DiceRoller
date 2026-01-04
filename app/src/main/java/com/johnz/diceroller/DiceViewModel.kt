@@ -78,6 +78,7 @@ data class CheatState(
 )
 
 sealed interface GameEvent {
+    object RollStarted : GameEvent
     data class RollFinished(
         val result: Int, 
         val type: DiceType,
@@ -292,6 +293,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 rollTrigger = triggerTime,
                 criticalState = CriticalState.NORMAL // Reset state on new roll
             )
+
+            // Emit Start Event
+            _gameEvents.emit(GameEvent.RollStarted)
 
             // Determine formula based on type
             val formula = if (card.visualType == DiceType.CUSTOM) {

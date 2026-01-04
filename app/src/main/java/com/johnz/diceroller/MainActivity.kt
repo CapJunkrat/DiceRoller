@@ -322,16 +322,12 @@ fun DiceScreen(
     val uiState by viewModel.uiState.collectAsState()
     val view = LocalView.current
 
-    // Trigger Sound Effect when rollTrigger changes
-    LaunchedEffect(uiState.rollTrigger) {
-        if (uiState.rollTrigger > 0) {
-            soundManager.playRollSound()
-        }
-    }
-
-    // Listen for Game Events (Roll Finished)
+    // Trigger Sound Effect via Events instead of State
     LaunchedEffect(Unit) {
         viewModel.gameEvents.collect { event ->
+            if (event is GameEvent.RollStarted) {
+                soundManager.playRollSound()
+            }
             if (event is GameEvent.RollFinished) {
                 if (event.isNat20) {
                     soundManager.playWinSound()
