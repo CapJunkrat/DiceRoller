@@ -1420,6 +1420,7 @@ fun SessionsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
+    var sessionToLoad by remember { mutableStateOf<GameSession?>(null) }
 
     if (showCreateDialog) {
         CreateSessionDialog(
@@ -1430,6 +1431,32 @@ fun SessionsScreen(
                 onNavigateBack() // Go back to history or stay here? User might want to verify.
                 // Actually, flow: Open Sessions -> Create -> (Session Starts) -> Maybe go back to DiceScreen?
                 // Let's go back.
+            }
+        )
+    }
+    
+    if (sessionToLoad != null) {
+        AlertDialog(
+            onDismissRequest = { sessionToLoad = null },
+            title = { Text("Merge History?") },
+            text = { Text("You have unsaved roll history in Quick Play. Do you want to merge it into '${sessionToLoad?.name}'?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    sessionToLoad?.let { viewModel.mergeAndResumeSession(it) }
+                    sessionToLoad = null
+                    onNavigateBack()
+                }) {
+                    Text("Merge")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    sessionToLoad?.let { viewModel.resumeSession(it) }
+                    sessionToLoad = null
+                    onNavigateBack()
+                }) {
+                    Text("Discard Current History")
+                }
             }
         )
     }
@@ -1444,9 +1471,7 @@ fun SessionsScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "New Game")
-                    }
+                    // Removed the + button here as requested
                 }
             )
         },
@@ -1483,8 +1508,13 @@ fun SessionsScreen(
                     session = session,
                     isActive = session.id == uiState.activeSession?.id,
                     onClick = {
-                        viewModel.resumeSession(session)
-                        onNavigateBack()
+                        // Check if we need to ask about merging
+                        if (uiState.activeSession == null && uiState.history.isNotEmpty()) {
+                            sessionToLoad = session
+                        } else {
+                            viewModel.resumeSession(session)
+                            onNavigateBack()
+                        }
                     },
                     onDelete = {
                         viewModel.deleteSession(session)

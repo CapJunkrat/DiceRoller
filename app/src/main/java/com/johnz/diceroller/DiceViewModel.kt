@@ -155,6 +155,19 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun mergeAndResumeSession(session: GameSession) {
+        val currentHistory = _internalState.value.history
+        viewModelScope.launch {
+            if (currentHistory.isNotEmpty()) {
+                val rollsToSave = currentHistory.map { 
+                    RollData(it.result, it.breakdown, it.timestamp) 
+                }
+                repository.addBatchRolls(session.id, rollsToSave)
+            }
+            resumeSession(session)
+        }
+    }
+
     fun resumeSession(session: GameSession) {
         sessionJob?.cancel()
         _internalState.value = _internalState.value.copy(activeSession = session)
