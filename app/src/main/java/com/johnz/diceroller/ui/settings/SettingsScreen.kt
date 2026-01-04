@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -47,6 +48,7 @@ fun SettingsScreen(
     var showAddCardDialog by remember { mutableStateOf(false) }
     var cardToEdit by remember { mutableStateOf<ActionCard?>(null) }
     var cardToDelete by remember { mutableStateOf<ActionCard?>(null) }
+    var showCreditsDialog by remember { mutableStateOf(false) }
 
     if (showAddCardDialog) {
         ActionCardDialog(
@@ -102,6 +104,26 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { cardToDelete = null }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showCreditsDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreditsDialog = false },
+            title = { Text("Credits") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text = "Sound Effects", fontWeight = FontWeight.Bold)
+                    Text(text = "“Various sound effects from Rubik's Race”")
+                    Text(text = "by Nick Bowler, licensed under CC BY 3.0")
+                    Text(text = "https://creativecommons.org/licenses/by/3.0/")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCreditsDialog = false }) {
+                    Text("Close")
                 }
             }
         )
@@ -237,6 +259,35 @@ fun SettingsScreen(
                     )
                     Text(
                         text = "Support the developer",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Divider(modifier = Modifier.padding(horizontal = 16.dp))
+
+            // --- Credits Section ---
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showCreditsDialog = true }
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = "Credits",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        text = "Credits",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = "Attributions & Licenses",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

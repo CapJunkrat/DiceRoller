@@ -13,9 +13,11 @@ import com.johnz.diceroller.data.db.GameSession
 import com.johnz.diceroller.data.db.RollMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
@@ -51,6 +53,10 @@ data class DiceUiState(
     val activeSession: GameSession? = null,
     val savedSessions: List<GameSession> = emptyList()
 )
+
+sealed interface GameEvent {
+    data class RollFinished(val result: Int, val type: DiceType) : GameEvent
+}
 
 class DiceViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -105,6 +111,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = DiceUiState()
     )
+
+    private val _gameEvents = MutableSharedFlow<GameEvent>()
+    val gameEvents = _gameEvents.asSharedFlow()
 
     private var rollJob: Job? = null
     private var sessionJob: Job? = null
@@ -306,6 +315,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     history = listOf(newHistoryItem) + _internalState.value.history
                 )
             }
+            
+            // 4. Emit Event
+            _gameEvents.emit(GameEvent.RollFinished(result.total, card.visualType))
         }
     }
     

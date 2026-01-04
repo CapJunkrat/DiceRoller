@@ -179,6 +179,8 @@ class MainActivity : ComponentActivity() {
 class SoundManager(context: Context) {
     private val soundPool: SoundPool
     private val rollSoundId: Int
+    private val winSoundId: Int
+    private val loseSoundId: Int
 
     init {
         val audioAttributes = AudioAttributes.Builder()
@@ -192,6 +194,8 @@ class SoundManager(context: Context) {
             .build()
 
         rollSoundId = soundPool.load(context, R.raw.dice_roll, 1)
+        winSoundId = soundPool.load(context, R.raw.win, 1) // Using arrive.flac for Win
+        loseSoundId = soundPool.load(context, R.raw.lose, 1) // Using lose.flac for Lose
     }
 
     fun playRollSound() {
@@ -199,6 +203,18 @@ class SoundManager(context: Context) {
             // Randomize pitch slightly for variety (0.9f to 1.1f)
             val pitch = Random.nextFloat() * 0.2f + 0.9f
             soundPool.play(rollSoundId, 1f, 1f, 0, 0, pitch)
+        }
+    }
+
+    fun playWinSound() {
+        if (winSoundId != 0) {
+            soundPool.play(winSoundId, 1f, 1f, 0, 0, 1f)
+        }
+    }
+
+    fun playLoseSound() {
+        if (loseSoundId != 0) {
+            soundPool.play(loseSoundId, 1f, 1f, 0, 0, 1f)
         }
     }
 
@@ -368,6 +384,21 @@ fun DiceScreen(
     LaunchedEffect(uiState.rollTrigger) {
         if (uiState.rollTrigger > 0) {
             soundManager.playRollSound()
+        }
+    }
+
+    // Listen for Game Events (Roll Finished)
+    LaunchedEffect(Unit) {
+        viewModel.gameEvents.collect { event ->
+            if (event is GameEvent.RollFinished) {
+                if (event.type == DiceType.D20) {
+                    if (event.result == 20) {
+                        soundManager.playWinSound()
+                    } else if (event.result == 1) {
+                        soundManager.playLoseSound()
+                    }
+                }
+            }
         }
     }
 
@@ -1067,22 +1098,6 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                 }
             }
             return@Canvas
-        }
-
-        if (style == DiceStyle.REALISTIC_3D) {
-            drawCircle(color = Color.Black.copy(alpha = 0.2f), radius = radius * 1.1f, center = Offset(cx + 15f, cy + 25f))
-            val radialGradient = Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.8f), color, color.copy(alpha = 0.8f), Color.Black.copy(alpha = 0.6f)), center = Offset(cx - radius * 0.3f, cy - radius * 0.3f), radius = radius * 1.8f)
-            when (type) {
-                DiceType.D4 -> {
-                    val path = Path().apply { moveTo(pTop.x, pTop.y); lineTo(pRight.x, pRight.y); lineTo(pBottom.x, pBottom.y); lineTo(pLeft.x, pLeft.y); close() }
-                    drawPath(path, brush = radialGradient)
-                    val edgePath = Path().apply { moveTo(pTop.x, pTop.y); lineTo(pBottom.x, pBottom.y) }
-                    drawPath(edgePath, Color.White.copy(alpha=0.3f), style = Stroke(width = 2f))
-                }
-                else -> {
-                    drawCircle(brush = radialGradient, radius = radius, center = center)
-                }
-            }
         }
     }
 }
