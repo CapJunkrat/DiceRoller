@@ -93,6 +93,10 @@ object CartoonColors {
     val TrueBlue = Color(0xFF54A0FF) // New Blue for STD
     val Outline = Color(0xFF2D3436) // Dark Charcoal for borders
     val Shadow = Color(0xFF000000).copy(alpha = 0.2f)
+    
+    // Critical Colors
+    val Gold = Color(0xFFFFD700)
+    val DarkRed = Color(0xFF8B0000)
 }
 
 // Custom History Icon (since it's not in core icons)
@@ -243,34 +247,6 @@ fun DiceAppWithNavigation() {
                 viewModel = viewModel
             )
         }
-    }
-}
-
-fun saveImageToGallery(context: Context, resourceId: Int, fileName: String) {
-    try {
-        val bitmap = BitmapFactory.decodeResource(context.resources, resourceId)
-        val contentValues = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, "$fileName.png")
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-            put(MediaStore.Images.Media.WIDTH, bitmap.width)
-            put(MediaStore.Images.Media.HEIGHT, bitmap.height)
-        }
-
-        val uri = context.contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
-
-        uri?.let {
-            context.contentResolver.openOutputStream(it).use { stream ->
-                if (stream != null) {
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-                    Toast.makeText(context, "Saved to Gallery", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } ?: run {
-            Toast.makeText(context, "Failed to save", Toast.LENGTH_SHORT).show()
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        Toast.makeText(context, "Error saving image", Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -534,6 +510,7 @@ fun ActionCardControls(
 
 @Composable
 fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
+    // Determine visual style based on critical state
     val baseColor = when(card.visualType) {
         DiceType.D4 -> CartoonColors.Red
         DiceType.D6 -> CartoonColors.Blue
@@ -543,6 +520,15 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         DiceType.D20 -> CartoonColors.Pink
         DiceType.D100 -> CartoonColors.Pink
         DiceType.CUSTOM -> Color.LightGray
+    }
+    
+    // Apply Critical Colors if not rolling
+    val finalColor = if (uiState.isRolling) baseColor else {
+        when (uiState.criticalState) {
+            CriticalState.CRIT_HIT -> CartoonColors.Gold
+            CriticalState.CRIT_MISS -> CartoonColors.DarkRed
+            else -> baseColor
+        }
     }
 
     val scale by animateFloatAsState(
@@ -577,10 +563,23 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
     ) { mode ->
         if (mode == RollMode.NORMAL) 0f else 1f
     }
+    
+    // Shake Animation for Fumble
+    val shakeOffset = remember { Animatable(0f) }
+    LaunchedEffect(uiState.criticalState) {
+        if (uiState.criticalState == CriticalState.CRIT_MISS && !uiState.isRolling) {
+            // Simple shake sequence
+            for (i in 0..5) {
+                shakeOffset.animateTo(10f, animationSpec = tween(50))
+                shakeOffset.animateTo(-10f, animationSpec = tween(50))
+            }
+            shakeOffset.animateTo(0f)
+        }
+    }
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(280.dp) // Main container size
+        modifier = Modifier.size(280.dp).offset(x = shakeOffset.value.dp) // Main container size
     ) {
         // --- Dice 1 (Primary: Moves Left in Adv/Dis) ---
         Box(
@@ -593,7 +592,7 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
             DiceRenderUnit(
                 uiState = uiState,
                 card = card,
-                color = baseColor,
+                color = finalColor,
                 displayText = uiState.displayedResult,
                 // Only show shadow for primary die if in Normal mode, or always? 
                 // Let's keep shadows consistent.
@@ -610,11 +609,41 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
                     .size(280.dp),
                 contentAlignment = Alignment.Center
             ) {
+                // Secondary die doesn't necessarily get the critical color unless we track its state separately.
+                // For simplicity and "Single Source of Truth", we might just keep it base color or dim it?
+                // Requirements say "Discarded d20 rolls must never trigger effects."
+                // So the secondary die (often the discarded one, but depends on mode) should probably remain standard color.
+                // However, in Adv mode, the Main Die is the KEPT one (winner).
+                // In Dis mode, the Main Die is the KEPT one (loser).
+                // So applying 'finalColor' (derived from main die state) to the Main Die is correct.
+                // The secondary die acts as the "Ghost" / "Alternative". It shouldn't flash gold if the main one is.
+                
                 DiceRenderUnit(
                     uiState = uiState,
                     card = card,
-                    color = baseColor,
+                    color = baseColor.copy(alpha = 0.6f), // Ghost effect
                     displayText = uiState.displayedResult2
+                )
+            }
+        }
+        
+        // --- Critical Labels ---
+        if (!uiState.isRolling) {
+            if (uiState.criticalState == CriticalState.CRIT_HIT) {
+                Text(
+                    text = "CRITICAL!",
+                    color = CartoonColors.Gold,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.align(Alignment.TopCenter).offset(y = (-20).dp)
+                )
+            } else if (uiState.criticalState == CriticalState.CRIT_MISS) {
+                Text(
+                    text = "FUMBLE",
+                    color = CartoonColors.DarkRed,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.align(Alignment.BottomCenter).offset(y = 20.dp)
                 )
             }
         }
@@ -683,11 +712,14 @@ fun DiceRenderUnit(
                 )
             }
 
+            // Text Color Logic: If Gold Dice, use darker text, else White
+            val textColor = if (color == CartoonColors.Gold) CartoonColors.DarkRed else Color.White
+            
             Text(
                 text = displayText,
                 fontSize = 64.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
+                color = textColor,
                 textAlign = TextAlign.Center
             )
         }

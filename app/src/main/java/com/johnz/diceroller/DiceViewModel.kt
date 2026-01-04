@@ -24,6 +24,13 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+// Define Visual States for Dice
+enum class CriticalState {
+    NORMAL,
+    CRIT_HIT,   // Nat 20
+    CRIT_MISS   // Nat 1
+}
+
 data class RollHistoryItem(
     val result: String,
     val breakdown: String,
@@ -37,6 +44,9 @@ data class DiceUiState(
     val breakdown: String = "",
     val isRolling: Boolean = false,
     
+    // Visual State for Criticals
+    val criticalState: CriticalState = CriticalState.NORMAL,
+
     // New Action Card State
     val selectedActionCard: ActionCard? = null,
     val visibleActionCards: List<ActionCard> = emptyList(),
@@ -155,13 +165,14 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectActionCard(card: ActionCard) {
-        // Reset interactive controls and roll mode when switching
+        // Reset interactive controls, roll mode, and critical state when switching
         _internalState.value = _internalState.value.copy(
             selectedActionCard = card,
             displayedResult = "1",
             displayedResult2 = "1",
             finalResult = 1,
             breakdown = "",
+            criticalState = CriticalState.NORMAL,
             customDiceCount = 1,
             customModifier = 0,
             selectedRollMode = RollMode.NORMAL
@@ -276,7 +287,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             val triggerTime = System.currentTimeMillis()
             _internalState.value = _internalState.value.copy(
                 isRolling = true,
-                rollTrigger = triggerTime
+                rollTrigger = triggerTime,
+                criticalState = CriticalState.NORMAL // Reset state on new roll
             )
 
             // Determine formula based on type
@@ -308,24 +320,57 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             var finalDisplay1 = result.total.toString()
             var finalDisplay2 = "1"
             
+            // Critical Detection Variables
+            var isNat20 = false
+            var isNat1 = false
+
             if (rollMode == RollMode.NORMAL) {
                 // Normal Mode: Main die shows total, Ghost die (if ever shown) shows same
                 finalDisplay2 = finalDisplay1
+                
+                // Normal Mode Critical Detection:
+                // Only if it is a single D20 roll? Or ANY D20 roll in the formula?
+                // RAW usually implies the "Attack Roll" d20.
+                // We'll detect if ANY kept d20 roll is 20 or 1.
+                // Since this is Normal mode, all rolled dice are "kept".
+                 isNat20 = diceRolls.any { 
+                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20 
+                }
+                 isNat1 = diceRolls.any { 
+                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1 
+                }
             } else {
                 // Adv/Dis Mode: 
                 // Main die shows the Grand Total (using the kept d20)
-                // Ghost die shows the "Alternative Total" (what the total WOULD be if we used the discarded d20)
-                // Formula: AltTotal = Total + (DiscardedValue - KeptValue) * Coefficient
                 
+                // Critical Detection Logic for Adv/Dis:
+                // We must check ONLY the d20 that was KEPT (used in calculation).
+                // The DiceParser logic sets 'value' to the kept value, and 'discardedValue' to the dropped one.
+                // So checking 'it.value' is sufficient for the KEPT result.
+                
+                // Find the D20 roll term(s)
+                 isNat20 = diceRolls.any { 
+                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20
+                }
+                 isNat1 = diceRolls.any { 
+                    it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1
+                }
+
+                // Calculate Ghost Die (Alternative Total)
                 val delta = diceRolls.sumOf { roll ->
                     val kept = roll.value
-                    val discarded = roll.discardedValue ?: kept // If no discard for this die, it contributes identically
+                    val discarded = roll.discardedValue ?: kept 
                     (discarded - kept) * roll.coefficient
                 }
                 
                 val altTotal = result.total + delta
                 finalDisplay2 = altTotal.toString()
             }
+            
+            // Resolve conflict if multiple dice (e.g. 2d20) have different crits?
+            // If ANY kept d20 is a 20 -> Critical Hit takes precedence?
+            // Usually attacks are one d20. But for multi-attack formulas, let's prioritize Nat 20.
+            val finalCriticalState = if (isNat20) CriticalState.CRIT_HIT else if (isNat1) CriticalState.CRIT_MISS else CriticalState.NORMAL
 
             // Determine animation upper bound
             val maxAnimationValue = if (hasDice) {
@@ -375,7 +420,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 displayedResult = finalDisplay1,
                 displayedResult2 = finalDisplay2,
                 finalResult = result.total,
-                breakdown = result.breakdown
+                breakdown = result.breakdown,
+                criticalState = finalCriticalState
             )
             
             if (activeSession != null) {
@@ -389,13 +435,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             
             // 4. Emit Event
             // Detect Criticals in ANY D20 roll within the result
-            val isNat20 = result.rolls.any { 
-                it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20 
-            }
-            val isNat1 = result.rolls.any { 
-                it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1 
-            }
-            
+            // (Re-using the logic derived above)
             _gameEvents.emit(
                 GameEvent.RollFinished(
                     result = result.total, 
