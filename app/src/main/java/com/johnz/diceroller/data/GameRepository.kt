@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.Flow
 data class RollData(
     val result: String,
     val breakdown: String,
+    val isNat20: Boolean = false,
+    val isNat1: Boolean = false,
     val timestamp: Long
 )
 
@@ -33,8 +35,14 @@ class GameRepository(private val database: AppDatabase) {
         return dao.getSessionById(id)
     }
 
-    suspend fun addRoll(sessionId: Int, result: String, breakdown: String) {
-        val roll = RollRecord(sessionId = sessionId, result = result, breakdown = breakdown)
+    suspend fun addRoll(sessionId: Int, result: String, breakdown: String, isNat20: Boolean = false, isNat1: Boolean = false) {
+        val roll = RollRecord(
+            sessionId = sessionId, 
+            result = result, 
+            breakdown = breakdown,
+            isNat20 = isNat20,
+            isNat1 = isNat1
+        )
         dao.insertRoll(roll)
         dao.updateLastPlayed(sessionId, System.currentTimeMillis())
     }
@@ -46,6 +54,8 @@ class GameRepository(private val database: AppDatabase) {
                 sessionId = sessionId, 
                 result = it.result, 
                 breakdown = it.breakdown, 
+                isNat20 = it.isNat20,
+                isNat1 = it.isNat1,
                 timestamp = it.timestamp
             )
         }

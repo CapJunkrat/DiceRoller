@@ -22,5 +22,7 @@ data class RollRecord(
     val sessionId: Int,
     val result: String,
     val breakdown: String,
+    val isNat20: Boolean = false,
+    val isNat1: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )

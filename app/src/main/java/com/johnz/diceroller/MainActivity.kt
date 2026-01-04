@@ -1165,22 +1165,6 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
             }
             return@Canvas
         }
-
-        if (style == DiceStyle.REALISTIC_3D) {
-            drawCircle(color = Color.Black.copy(alpha = 0.2f), radius = radius * 1.1f, center = Offset(cx + 15f, cy + 25f))
-            val radialGradient = Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.8f), color, color.copy(alpha = 0.8f), Color.Black.copy(alpha = 0.6f)), center = Offset(cx - radius * 0.3f, cy - radius * 0.3f), radius = radius * 1.8f)
-            when (type) {
-                DiceType.D4 -> {
-                    val path = Path().apply { moveTo(pTop.x, pTop.y); lineTo(pRight.x, pRight.y); lineTo(pBottom.x, pBottom.y); lineTo(pLeft.x, pLeft.y); close() }
-                    drawPath(path, brush = radialGradient)
-                    val edgePath = Path().apply { moveTo(pTop.x, pTop.y); lineTo(pBottom.x, pBottom.y) }
-                    drawPath(edgePath, Color.White.copy(alpha=0.3f), style = Stroke(width = 2f))
-                }
-                else -> {
-                    drawCircle(brush = radialGradient, radius = radius, center = center)
-                }
-            }
-        }
     }
 }
 
@@ -1531,34 +1515,82 @@ fun HistoryScreen(
 
 @Composable
 fun HistoryItemCard(item: RollHistoryItem) {
+    // Determine colors based on state
+    val containerColor = when {
+        item.isNat20 -> CartoonColors.Gold.copy(alpha = 0.1f)
+        item.isNat1 -> CartoonColors.DarkRed.copy(alpha = 0.1f)
+        else -> Color.White
+    }
+    
+    val accentColor = when {
+        item.isNat20 -> CartoonColors.Gold
+        item.isNat1 -> CartoonColors.DarkRed
+        else -> Color.Transparent
+    }
+
+    val resultColor = when {
+        item.isNat20 -> Color(0xFFB8860B) // Darker Gold for text
+        item.isNat1 -> CartoonColors.DarkRed
+        else -> CartoonColors.Outline
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.height(IntrinsicSize.Min)
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.breakdown,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = Color.Gray
-                )
-                Text(
-                    text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(item.timestamp)),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.LightGray
+            // Accent Stripe
+            if (accentColor != Color.Transparent) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(6.dp)
+                        .background(accentColor)
                 )
             }
-            Text(
-                text = item.result,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = CartoonColors.Outline
-            )
+            
+            // Content
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.breakdown,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.Gray
+                    )
+                    Text(
+                        text = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(item.timestamp)),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.LightGray
+                    )
+                }
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (item.isNat20) {
+                        Text(
+                            text = "★",
+                            color = resultColor,
+                            style = MaterialTheme.typography.headlineSmall,
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                    }
+                    
+                    Text(
+                        text = item.result,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = resultColor
+                    )
+                }
+            }
         }
     }
 }

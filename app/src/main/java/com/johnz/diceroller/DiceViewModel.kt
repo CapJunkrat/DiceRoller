@@ -34,6 +34,8 @@ enum class CriticalState {
 data class RollHistoryItem(
     val result: String,
     val breakdown: String,
+    val isNat20: Boolean = false,
+    val isNat1: Boolean = false,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -211,7 +213,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             // Transfer existing history if any (and if we were in Quick Play mode)
             if (_internalState.value.activeSession == null && currentHistory.isNotEmpty()) {
                 val rollsToSave = currentHistory.map { 
-                    RollData(it.result, it.breakdown, it.timestamp) 
+                    RollData(it.result, it.breakdown, it.isNat20, it.isNat1, it.timestamp) 
                 }
                 repository.addBatchRolls(id, rollsToSave)
             }
@@ -228,7 +230,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (currentHistory.isNotEmpty()) {
                 val rollsToSave = currentHistory.map { 
-                    RollData(it.result, it.breakdown, it.timestamp) 
+                    RollData(it.result, it.breakdown, it.isNat20, it.isNat1, it.timestamp) 
                 }
                 repository.addBatchRolls(session.id, rollsToSave)
             }
@@ -242,7 +244,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         
         sessionJob = viewModelScope.launch {
             repository.getRollsForSession(session.id).collectLatest { rolls ->
-                val items = rolls.map { RollHistoryItem(it.result, it.breakdown, it.timestamp) }
+                val items = rolls.map { RollHistoryItem(it.result, it.breakdown, it.isNat20, it.isNat1, it.timestamp) }
                 _internalState.value = _internalState.value.copy(history = items)
             }
         }
@@ -410,7 +412,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             // 3. Set Final Result & Save
             val newHistoryItem = RollHistoryItem(
                 result = result.total.toString(),
-                breakdown = result.breakdown
+                breakdown = result.breakdown,
+                isNat20 = isNat20,
+                isNat1 = isNat1
             )
             
             val activeSession = _internalState.value.activeSession
@@ -425,7 +429,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             )
             
             if (activeSession != null) {
-                repository.addRoll(activeSession.id, result.total.toString(), result.breakdown)
+                repository.addRoll(activeSession.id, result.total.toString(), result.breakdown, isNat20, isNat1)
                 _internalState.value = newState
             } else {
                 _internalState.value = newState.copy(
