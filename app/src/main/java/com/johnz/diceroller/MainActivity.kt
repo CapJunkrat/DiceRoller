@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -1248,6 +1249,25 @@ fun HistoryScreen(
     
     // State to control the clear history confirmation dialog
     var showClearDialog by remember { mutableStateOf(false) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+
+    if (showCreateDialog) {
+        CreateSessionDialog(
+            onDismiss = { showCreateDialog = false },
+            onConfirm = { name ->
+                viewModel.startNewSession(name)
+                showCreateDialog = false
+                // No navigation needed, DiceScreen will handle active session UI
+                // But we probably want to navigate back to Main if started from History?
+                // Actually, starting a new session from history usually implies you want to play it.
+                // The current flow is: onNavigateToSessions -> Create -> (Session Starts)
+                // Here we are inside HistoryScreen.
+                // If we start a new session, we should probably clear history view context?
+                // Let's just stay here or maybe go back. The previous logic didn't navigate back.
+                // The user asked to "Save" via this button, so essentially "Create Session".
+            }
+        )
+    }
 
     if (showClearDialog) {
         AlertDialog(
@@ -1282,28 +1302,50 @@ fun HistoryScreen(
                     }
                 },
                 actions = {
-                    TextButton(onClick = onNavigateToSessions) {
-                        // Use our custom defined FolderIcon here
-                        Icon(imageVector = FolderIcon, contentDescription = null, tint = CartoonColors.Outline)
-                        Spacer(Modifier.width(4.dp))
-                        Text("Saved Games", color = CartoonColors.Outline)
-                    }
+                    // Empty actions
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { 
-                    if (uiState.activeSession != null) {
-                        showClearDialog = true
-                    } else {
-                        viewModel.clearCurrentHistory() 
-                    }
-                },
-                containerColor = CartoonColors.Red,
-                contentColor = Color.White
+            Row(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(Icons.Default.Delete, contentDescription = "Clear History")
+                // 1. Create Session Button (Green +)
+                FloatingActionButton(
+                    onClick = { showCreateDialog = true },
+                    containerColor = CartoonColors.Green,
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Save / New Session")
+                }
+
+                // 2. Load Button (Blue Refresh)
+                FloatingActionButton(
+                    onClick = { onNavigateToSessions() },
+                    containerColor = CartoonColors.Blue,
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Load Session")
+                }
+
+                // 3. Clear History Button (Red Delete)
+                FloatingActionButton(
+                    onClick = { 
+                        if (uiState.activeSession != null) {
+                            showClearDialog = true
+                        } else {
+                            viewModel.clearCurrentHistory() 
+                        }
+                    },
+                    containerColor = CartoonColors.Red,
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Clear History")
+                }
             }
         },
         floatingActionButtonPosition = FabPosition.Center
@@ -1332,6 +1374,9 @@ fun HistoryScreen(
                     }
                 }
             } else {
+                // Removed the "Quick Play (Not Saved)" Surface with Save/Load button
+                // as requested.
+                /*
                 Surface(
                     color = Color.LightGray.copy(alpha = 0.2f),
                     modifier = Modifier.fillMaxWidth().padding(8.dp),
@@ -1346,11 +1391,10 @@ fun HistoryScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = onNavigateToSessions) {
-                            Text("Save / Load")
-                        }
+                        // Removed Button
                     }
                 }
+                */
             }
 
             LazyColumn(
@@ -1421,6 +1465,7 @@ fun SessionsScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showCreateDialog by remember { mutableStateOf(false) }
     var sessionToLoad by remember { mutableStateOf<GameSession?>(null) }
+    var sessionToDelete by remember { mutableStateOf<GameSession?>(null) }
 
     if (showCreateDialog) {
         CreateSessionDialog(
@@ -1456,6 +1501,27 @@ fun SessionsScreen(
                     onNavigateBack()
                 }) {
                     Text("Discard Current History")
+                }
+            }
+        )
+    }
+
+    if (sessionToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { sessionToDelete = null },
+            title = { Text("Delete Session?") },
+            text = { Text("Are you sure you want to delete '${sessionToDelete?.name}'? This action cannot be undone.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    sessionToDelete?.let { viewModel.deleteSession(it) }
+                    sessionToDelete = null
+                }) {
+                    Text("Delete", color = CartoonColors.Red)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { sessionToDelete = null }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -1517,7 +1583,7 @@ fun SessionsScreen(
                         }
                     },
                     onDelete = {
-                        viewModel.deleteSession(session)
+                        sessionToDelete = session
                     }
                 )
             }
@@ -1569,7 +1635,7 @@ fun SessionItemCard(
             }
             
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Gray)
+                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = CartoonColors.Red)
             }
         }
     }
