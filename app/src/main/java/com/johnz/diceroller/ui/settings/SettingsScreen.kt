@@ -2,6 +2,7 @@ package com.johnz.diceroller.ui.settings
 
 import android.content.Intent
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
@@ -83,12 +85,20 @@ fun SettingsScreen(
     val isSystemHapticsEnabled by viewModel.isSystemHapticsEnabled.collectAsState()
     val allCards by viewModel.allActionCards.collectAsState()
     
+    // Debug State
+    val debugModeEnabled by viewModel.debugModeEnabled.collectAsState()
+    val alwaysNat20 by viewModel.alwaysNat20.collectAsState()
+    val alwaysNat1 by viewModel.alwaysNat1.collectAsState()
+    
     val context = LocalContext.current
     
     var showAddCardDialog by remember { mutableStateOf(false) }
     var cardToEdit by remember { mutableStateOf<ActionCard?>(null) }
     var cardToDelete by remember { mutableStateOf<ActionCard?>(null) }
     var showCreditsDialog by remember { mutableStateOf(false) }
+    
+    // Tap counter for enabling debug mode
+    var titleTapCount by remember { mutableStateOf(0) }
 
     if (showAddCardDialog) {
         ActionCardDialog(
@@ -172,7 +182,21 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { 
+                    Text(
+                        text = "Settings",
+                        modifier = Modifier.clickable {
+                            if (!debugModeEnabled) {
+                                titleTapCount++
+                                if (titleTapCount >= 10) {
+                                    viewModel.setDebugModeEnabled(true)
+                                    Toast.makeText(context, "Debug Mode Enabled!", Toast.LENGTH_SHORT).show()
+                                    titleTapCount = 0
+                                }
+                            }
+                        }
+                    ) 
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -334,6 +358,46 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            if (debugModeEnabled) {
+                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                Text(
+                    text = "Debug Mode",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Always Nat 20")
+                    Switch(
+                        checked = alwaysNat20,
+                        onCheckedChange = { viewModel.setAlwaysNat20(it) }
+                    )
+                }
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Always Nat 1")
+                    Switch(
+                        checked = alwaysNat1,
+                        onCheckedChange = { viewModel.setAlwaysNat1(it) }
+                    )
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

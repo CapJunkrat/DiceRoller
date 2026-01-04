@@ -50,6 +50,28 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val _isSystemHapticsEnabled = MutableStateFlow(true)
     val isSystemHapticsEnabled: StateFlow<Boolean> = _isSystemHapticsEnabled.asStateFlow()
 
+    // Debug / Cheat Flows
+    val debugModeEnabled: StateFlow<Boolean> = settingsRepository.debugModeEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    val alwaysNat20: StateFlow<Boolean> = settingsRepository.alwaysNat20Flow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
+    val alwaysNat1: StateFlow<Boolean> = settingsRepository.alwaysNat1Flow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+
     init {
         checkSystemHapticsStatus()
     }
@@ -117,6 +139,25 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun deleteActionCard(card: ActionCard) {
         viewModelScope.launch {
             gameRepository.deleteActionCard(card)
+        }
+    }
+
+    // Debug Actions
+    fun setDebugModeEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setDebugModeEnabled(enabled)
+        }
+    }
+
+    fun setAlwaysNat20(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAlwaysNat20(enabled)
+        }
+    }
+
+    fun setAlwaysNat1(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setAlwaysNat1(enabled)
         }
     }
 }

@@ -1,12 +1,12 @@
 package com.johnz.diceroller
 
-import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.SoundPool
+import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
 import android.view.HapticFeedbackConstants
@@ -17,7 +17,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -39,7 +38,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -58,14 +56,11 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -136,30 +131,6 @@ val HistoryIcon: ImageVector = ImageVector.Builder(
     }
 }.build()
 
-// Custom Folder Icon
-val FolderIcon: ImageVector = ImageVector.Builder(
-    name = "Folder",
-    defaultWidth = 24.dp,
-    defaultHeight = 24.dp,
-    viewportWidth = 24f,
-    viewportHeight = 24f
-).apply {
-    path(fill = SolidColor(Color.Black)) {
-        moveTo(10.0f, 4.0f)
-        horizontalLineTo(4.0f)
-        curveTo(2.9f, 4.0f, 2.01f, 4.9f, 2.01f, 6.0f)
-        lineTo(2.0f, 18.0f)
-        curveTo(2.0f, 19.1f, 2.9f, 20.0f, 4.0f, 20.0f)
-        horizontalLineTo(20.0f)
-        curveTo(21.1f, 20.0f, 22.0f, 19.1f, 22.0f, 18.0f)
-        verticalLineTo(8.0f)
-        curveTo(22.0f, 6.9f, 21.1f, 6.0f, 20.0f, 6.0f)
-        horizontalLineTo(12.0f)
-        lineTo(10.0f, 4.0f)
-        close()
-    }
-}.build()
-
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -195,13 +166,12 @@ class SoundManager(context: Context) {
             .build()
 
         rollSoundId = soundPool.load(context, R.raw.dice_roll, 1)
-        winSoundId = soundPool.load(context, R.raw.win, 1) // Using win.flac for Win
-        loseSoundId = soundPool.load(context, R.raw.lose, 1) // Using lose.flac for Lose
+        winSoundId = soundPool.load(context, R.raw.win, 1) 
+        loseSoundId = soundPool.load(context, R.raw.lose, 1)
     }
 
     fun playRollSound() {
         if (rollSoundId != 0) {
-            // Randomize pitch slightly for variety (0.9f to 1.1f)
             val pitch = Random.nextFloat() * 0.2f + 0.9f
             soundPool.play(rollSoundId, 1f, 1f, 0, 0, pitch)
         }
@@ -228,14 +198,9 @@ class SoundManager(context: Context) {
 fun DiceAppWithNavigation() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    
-    // Initialize ViewModel here to share across screens
     val viewModel: DiceViewModel = viewModel()
-    
-    // Initialize SoundManager
     val soundManager = remember { SoundManager(context) }
     
-    // Release SoundPool when the app is destroyed
     DisposableEffect(Unit) {
         onDispose {
             soundManager.release()
@@ -392,12 +357,10 @@ fun DiceScreen(
     LaunchedEffect(Unit) {
         viewModel.gameEvents.collect { event ->
             if (event is GameEvent.RollFinished) {
-                if (event.type == DiceType.D20) {
-                    if (event.result == 20) {
-                        soundManager.playWinSound()
-                    } else if (event.result == 1) {
-                        soundManager.playLoseSound()
-                    }
+                if (event.isNat20) {
+                    soundManager.playWinSound()
+                } else if (event.isNat1) {
+                    soundManager.playLoseSound()
                 }
             }
         }
@@ -461,7 +424,11 @@ fun DiceScreen(
                             indication = null
                         ) {
                             if (!uiState.isRolling) {
-                                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                    view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                } else {
+                                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                }
                                 viewModel.rollDice()
                             }
                         },
@@ -578,13 +545,13 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         DiceType.CUSTOM -> Color.LightGray
     }
 
-    val bounceScale by animateFloatAsState(
+    val scale by animateFloatAsState(
         targetValue = if (uiState.isRolling) 0.9f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ),
-        label = "bounceScale"
+        label = "scale"
     )
 
     // Animation Transitions for Adv/Dis
@@ -619,7 +586,7 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         Box(
             modifier = Modifier
                 .offset(x = -separationOffset)
-                .scale(bounceScale * modeScale)
+                .scale(scale * modeScale) 
                 .size(280.dp), // Size of individual die render space
             contentAlignment = Alignment.Center
         ) {
@@ -638,7 +605,7 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
             Box(
                 modifier = Modifier
                     .offset(x = separationOffset)
-                    .scale(bounceScale * modeScale)
+                    .scale(scale * modeScale) 
                     .alpha(secondDieAlpha)
                     .size(280.dp),
                 contentAlignment = Alignment.Center
@@ -727,8 +694,6 @@ fun DiceRenderUnit(
     }
 }
 
-// ... (DiceShapeRenderer, ExplosionEffect, DiceSelector, CustomFormulaInput, InteractiveDiceControls, ControlGroup, HistoryScreen, SessionsScreen, etc. remain unchanged)
-
 @Composable
 fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
     Canvas(modifier = Modifier.fillMaxSize()) {
@@ -816,7 +781,7 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
             }
 
             val path = Path()
-            val innerPath = Path()
+            // val innerPath = Path() // Removed unused variable
 
             when (type) {
                 DiceType.D4 -> {
@@ -1167,6 +1132,22 @@ fun DiceShapeRenderer(style: DiceStyle, type: DiceType, color: Color) {
                 }
             }
             return@Canvas
+        }
+
+        if (style == DiceStyle.REALISTIC_3D) {
+            drawCircle(color = Color.Black.copy(alpha = 0.2f), radius = radius * 1.1f, center = Offset(cx + 15f, cy + 25f))
+            val radialGradient = Brush.radialGradient(colors = listOf(Color.White.copy(alpha = 0.8f), color, color.copy(alpha = 0.8f), Color.Black.copy(alpha = 0.6f)), center = Offset(cx - radius * 0.3f, cy - radius * 0.3f), radius = radius * 1.8f)
+            when (type) {
+                DiceType.D4 -> {
+                    val path = Path().apply { moveTo(pTop.x, pTop.y); lineTo(pRight.x, pRight.y); lineTo(pBottom.x, pBottom.y); lineTo(pLeft.x, pLeft.y); close() }
+                    drawPath(path, brush = radialGradient)
+                    val edgePath = Path().apply { moveTo(pTop.x, pTop.y); lineTo(pBottom.x, pBottom.y) }
+                    drawPath(edgePath, Color.White.copy(alpha=0.3f), style = Stroke(width = 2f))
+                }
+                else -> {
+                    drawCircle(brush = radialGradient, radius = radius, center = center)
+                }
+            }
         }
     }
 }

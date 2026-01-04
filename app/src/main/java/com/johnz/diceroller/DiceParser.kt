@@ -1,6 +1,8 @@
 package com.johnz.diceroller
 
 import com.johnz.diceroller.data.db.RollMode
+import kotlin.math.max
+import kotlin.math.min
 
 /**
  * Utility class to parse and roll dice formulas.
@@ -10,60 +12,26 @@ object DiceParser {
 
     /**
      * Checks if the formula string is valid.
-     * A valid formula must allow being fully parsed by the dice regex without leftover characters (ignoring whitespace).
      */
     fun isValid(formula: String): Boolean {
         if (formula.isBlank()) return false
         val input = formula.replace("\\s".toRegex(), "").lowercase()
-        
-        // Regex must match the same pattern used in parsing
-        // ([+\-]?) : Group 1 (Sign)
-        // (?:(\d*)d(\d+)|(\d+)) : Group 2 (Count), Group 3 (Faces) OR Group 4 (Constant)
         val regex = Regex("([+\\-]?)(?:(\\d*)d(\\d+)|(\\d+))")
-        
         val matches = regex.findAll(input)
         if (matches.count() == 0) return false
-        
         val matchedLength = matches.sumOf { it.value.length }
         return matchedLength == input.length
     }
 
     /**
      * Parses a formula string and executes the roll.
-     * Example formulas: "d20", "2d6+3", "1d100 - 5".
-     * Supports Advantage/Disadvantage by rolling the entire formula twice.
+     * 
+     * If mode is ADVANTAGE or DISADVANTAGE, d20 rolls are rolled twice and the best/worst is kept.
+     * Other dice are rolled normally once.
+     * 
+     * @param forcedD20Result If provided, all D20 rolls will result in this value (Debug/Cheat feature).
      */
-    fun parseAndRoll(formula: String, mode: RollMode = RollMode.NORMAL): RollResult {
-        if (mode == RollMode.NORMAL) {
-            return parseAndRollInternal(formula)
-        }
-
-        val result1 = parseAndRollInternal(formula)
-        val result2 = parseAndRollInternal(formula)
-
-        val useFirst = if (mode == RollMode.ADVANTAGE) result1.total >= result2.total else result1.total <= result2.total
-        val finalResult = if (useFirst) result1 else result2
-        
-        val raw1 = getRawDiceTotal(result1)
-        val raw2 = getRawDiceTotal(result2)
-        
-        val r1Str = if (useFirst) "[$raw1]" else "$raw1"
-        val r2Str = if (!useFirst) "[$raw2]" else "$raw2"
-        
-        val modeLabel = if (mode == RollMode.ADVANTAGE) "Adv" else "Dis"
-        // Format: Adv: [15], 4 -> 1d20(15)+4 | 19
-        val newBreakdown = "$modeLabel: $r1Str, $r2Str -> ${finalResult.breakdown} | ${finalResult.total}"
-
-        return finalResult.copy(breakdown = newBreakdown)
-    }
-
-    private fun getRawDiceTotal(result: RollResult): Int {
-        return result.rolls
-            .filter { it.die !is ConstantDie }
-            .sumOf { it.value * it.coefficient }
-    }
-
-    private fun parseAndRollInternal(formula: String): RollResult {
+    fun parseAndRoll(formula: String, mode: RollMode = RollMode.NORMAL, forcedD20Result: Int? = null): RollResult {
         // Normalize input
         val input = formula.replace("\\s".toRegex(), "").lowercase()
         if (input.isEmpty()) return RollResult(0, emptyList(), 0, "Empty")
@@ -101,21 +69,43 @@ object DiceParser {
                 val count = if (countStr.isEmpty()) 1 else countStr.toIntOrNull() ?: 1
                 val faces = facesStr.toIntOrNull() ?: 6
                 
-                // For visualization breakdown: e.g. "2d6(3, 5)"
                 breakdownBuilder.append("${count}d${faces}")
-                val currentTermRolls = mutableListOf<Int>()
+                val currentTermRollsStr = mutableListOf<String>()
 
                 repeat(count) {
                     val die = StandardDie(faces)
-                    val rollValue = die.roll()
+                    var rollValue = 0
+                    var discardedValue: Int? = null
+
+                    // Logic: Only apply Adv/Dis to d20s
+                    if (faces == 20 && mode != RollMode.NORMAL) {
+                        val v1 = if (forcedD20Result != null) forcedD20Result else die.roll()
+                        val v2 = if (forcedD20Result != null) forcedD20Result else die.roll()
+                        
+                        if (mode == RollMode.ADVANTAGE) {
+                            rollValue = max(v1, v2)
+                            discardedValue = min(v1, v2)
+                        } else {
+                            rollValue = min(v1, v2)
+                            discardedValue = max(v1, v2)
+                        }
+                        
+                        // Breakdown string representation: 18|5
+                        currentTermRollsStr.add("${rollValue}|${discardedValue}")
+                    } else {
+                        // Standard Roll
+                         rollValue = if (faces == 20 && forcedD20Result != null) {
+                            forcedD20Result
+                        } else {
+                            die.roll()
+                        }
+                        currentTermRollsStr.add(rollValue.toString())
+                    }
                     
-                    allRolls.add(SingleDieRoll(die, rollValue, multiplier))
-                    currentTermRolls.add(rollValue)
-                    
+                    allRolls.add(SingleDieRoll(die, rollValue, multiplier, discardedValue))
                     grandTotal += rollValue * multiplier
                     
-                    // Max total calculation logic:
-                    // If adding, add max value. If subtracting, subtract min value (1).
+                    // Max total calculation logic
                     if (multiplier == 1) {
                         maxPossibleTotal += die.maxValue()
                     } else {
@@ -123,8 +113,8 @@ object DiceParser {
                     }
                 }
                 
-                if (count > 1 || currentTermRolls.isNotEmpty()) {
-                     breakdownBuilder.append(currentTermRolls.joinToString(prefix = "(", postfix = ")"))
+                if (count > 1 || currentTermRollsStr.isNotEmpty()) {
+                     breakdownBuilder.append(currentTermRollsStr.joinToString(prefix = "(", postfix = ")"))
                 }
 
             } else if (constantStr.isNotEmpty()) {

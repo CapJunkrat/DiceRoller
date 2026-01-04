@@ -14,7 +14,7 @@ sealed class Die {
 /**
  * 2️⃣ 标准骰子（d6 / d20）
  */
-class StandardDie(private val faces: Int) : Die() {
+class StandardDie(val faces: Int) : Die() { // Changed visibility of 'faces' to public (default) by removing 'private'
     override fun roll(): Int = Random.nextInt(1, faces + 1)
     override fun maxValue(): Int = faces
     override fun possibleValues(): List<Int> = (1..faces).toList()
@@ -51,11 +51,13 @@ class ConstantDie(private val value: Int) : Die() {
 /**
  * 四、RollResult 的正确形态（动画友好）
  * 增加了 coefficient 以支持减法运算 (例如 -1d4)
+ * 增加了 discardedValue 以支持优劣势投掷 (记录被舍弃的那个骰子值)
  */
 data class SingleDieRoll(
     val die: Die,
     val value: Int,
-    val coefficient: Int = 1 // 1 for addition, -1 for subtraction
+    val coefficient: Int = 1, // 1 for addition, -1 for subtraction
+    val discardedValue: Int? = null // For Advantage/Disadvantage
 )
 
 data class RollResult(

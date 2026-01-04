@@ -52,11 +52,25 @@ data class DiceUiState(
     val history: List<RollHistoryItem> = emptyList(),
     
     val activeSession: GameSession? = null,
-    val savedSessions: List<GameSession> = emptyList()
+    val savedSessions: List<GameSession> = emptyList(),
+    
+    // Cheats
+    val cheatNat20: Boolean = false,
+    val cheatNat1: Boolean = false
+)
+
+data class CheatState(
+    val cheatNat20: Boolean = false,
+    val cheatNat1: Boolean = false
 )
 
 sealed interface GameEvent {
-    data class RollFinished(val result: Int, val type: DiceType) : GameEvent
+    data class RollFinished(
+        val result: Int, 
+        val type: DiceType,
+        val isNat20: Boolean = false,
+        val isNat1: Boolean = false
+    ) : GameEvent
 }
 
 class DiceViewModel(application: Application) : AndroidViewModel(application) {
@@ -67,12 +81,21 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     
     private val _internalState = MutableStateFlow(DiceUiState())
 
+    // Combine Cheat Flows first to reduce argument count
+    private val cheatStateFlow = combine(
+        settingsRepository.alwaysNat20Flow,
+        settingsRepository.alwaysNat1Flow
+    ) { nat20, nat1 ->
+        CheatState(nat20, nat1)
+    }
+
     val uiState: StateFlow<DiceUiState> = combine(
         _internalState,
         repository.allActionCards,
         settingsRepository.diceStyleFlow,
-        settingsRepository.lastSelectedActionCardIdFlow
-    ) { state, allCards, currentStyle, lastSelectedId ->
+        settingsRepository.lastSelectedActionCardIdFlow,
+        cheatStateFlow
+    ) { state, allCards, currentStyle, lastSelectedId, cheatState ->
         
         // Sort: System cards first, then Custom cards, both by creation order (ID)
         val sortedCards = allCards.sortedWith(
@@ -86,7 +109,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         // 3. If lastSelectedId not found, try default "D20".
         // 4. If "D20" not found, use first available card.
         
-        var newSelected = state.selectedActionCard?.let { current ->
+        var newSelected: ActionCard? = state.selectedActionCard?.let { current ->
              sortedCards.find { it.id == current.id }
         }
 
@@ -105,7 +128,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         state.copy(
             visibleActionCards = sortedCards,
             selectedActionCard = newSelected,
-            diceStyle = currentStyle
+            diceStyle = currentStyle,
+            cheatNat20 = cheatState.cheatNat20,
+            cheatNat1 = cheatState.cheatNat1
         )
     }.stateIn(
         scope = viewModelScope,
@@ -268,8 +293,45 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 card.formula
             }
             
+            // Check for Cheat/Debug overrides
+            val forcedD20Result = if (currentState.cheatNat20) 20 else if (currentState.cheatNat1) 1 else null
+
             // 1. Parse and calculate the final result
-            val result = DiceParser.parseAndRoll(formula, rollMode)
+            val result = DiceParser.parseAndRoll(formula, rollMode, forcedD20Result)
+
+            // Calculate display values immediately
+            val diceRolls = result.rolls.filter { it.die !is ConstantDie }
+            val hasDice = diceRolls.isNotEmpty()
+            
+            // Default: Main display shows the Grand Total
+            var finalDisplay1 = result.total.toString()
+            var finalDisplay2 = "1"
+            
+            if (rollMode == RollMode.NORMAL) {
+                // Normal Mode: Main die shows total, Ghost die (if ever shown) shows same
+                finalDisplay2 = finalDisplay1
+            } else {
+                // Adv/Dis Mode: 
+                // Main die shows the Grand Total (using the kept d20)
+                // Ghost die shows the "Alternative Total" (what the total WOULD be if we used the discarded d20)
+                // Formula: AltTotal = Total + (DiscardedValue - KeptValue) * Coefficient
+                
+                val delta = diceRolls.sumOf { roll ->
+                    val kept = roll.value
+                    val discarded = roll.discardedValue ?: kept // If no discard for this die, it contributes identically
+                    (discarded - kept) * roll.coefficient
+                }
+                
+                val altTotal = result.total + delta
+                finalDisplay2 = altTotal.toString()
+            }
+
+            // Determine animation upper bound
+            val maxAnimationValue = if (hasDice) {
+                diceRolls.sumOf { it.die.maxValue() }
+            } else {
+                result.maxTotal
+            }
 
             val animationDuration = 500L
             val updateInterval = 60L
@@ -282,9 +344,10 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 var nextValue = 0
                 var nextValue2 = 0
                 if (result.rolls.isNotEmpty()) {
-                    nextValue = kotlin.random.Random.nextInt(1, result.maxTotal + 1)
+                    // Animate up to the max possible face value sum, to be realistic
+                    nextValue = kotlin.random.Random.nextInt(1, maxAnimationValue + 1)
                     if (rollMode != RollMode.NORMAL) {
-                        nextValue2 = kotlin.random.Random.nextInt(1, result.maxTotal + 1)
+                        nextValue2 = kotlin.random.Random.nextInt(1, maxAnimationValue + 1)
                     }
                 } else {
                     nextValue = 1
@@ -303,26 +366,6 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 result = result.total.toString(),
                 breakdown = result.breakdown
             )
-            
-            // Extract raw dice values if Adv/Dis
-            var finalDisplay1 = result.total.toString()
-            var finalDisplay2 = "1"
-            
-            if (rollMode != RollMode.NORMAL) {
-                // Breakdown is like "Adv: [15], 4 -> ..."
-                val regex = Regex("(?:\\[(\\d+)\\]|(\\d+))")
-                val matches = regex.findAll(result.breakdown).toList()
-                if (matches.size >= 2) {
-                    val first = matches[0].value.replace("[", "").replace("]", "")
-                    val second = matches[1].value.replace("[", "").replace("]", "")
-                    // Since Adv/Dis logic might swap order, just showing them as they appear in string
-                    finalDisplay1 = first
-                    finalDisplay2 = second
-                }
-            } else {
-                finalDisplay1 = result.total.toString()
-                finalDisplay2 = result.total.toString()
-            }
             
             val activeSession = _internalState.value.activeSession
             
@@ -344,7 +387,22 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             }
             
             // 4. Emit Event
-            _gameEvents.emit(GameEvent.RollFinished(result.total, card.visualType))
+            // Detect Criticals in ANY D20 roll within the result
+            val isNat20 = result.rolls.any { 
+                it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 20 
+            }
+            val isNat1 = result.rolls.any { 
+                it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1 
+            }
+            
+            _gameEvents.emit(
+                GameEvent.RollFinished(
+                    result = result.total, 
+                    type = card.visualType,
+                    isNat20 = isNat20,
+                    isNat1 = isNat1
+                )
+            )
         }
     }
     
