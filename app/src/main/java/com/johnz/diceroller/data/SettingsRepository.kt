@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -19,6 +20,7 @@ class SettingsRepository(private val context: Context) {
         private val VISIBLE_DICE_KEY = stringSetPreferencesKey("visible_dice_faces")
         private val CUSTOM_DICE_VISIBLE_KEY = booleanPreferencesKey("custom_dice_visible")
         private val DICE_STYLE_KEY = stringPreferencesKey("dice_visual_style")
+        private val LAST_SELECTED_ACTION_CARD_ID_KEY = longPreferencesKey("last_selected_action_card_id")
 
         val DEFAULT_DICE_FACES = setOf("4", "6", "8", "10", "12", "20", "100")
     }
@@ -43,6 +45,11 @@ class SettingsRepository(private val context: Context) {
                 DiceStyle.CARTOON_25D
             }
         }
+        
+    val lastSelectedActionCardIdFlow: Flow<Long?> = context.dataStore.data
+        .map { preferences ->
+            preferences[LAST_SELECTED_ACTION_CARD_ID_KEY]
+        }
 
     suspend fun updateVisibleDice(visibleFaces: Set<Int>) {
         context.dataStore.edit { settings ->
@@ -60,6 +67,12 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateDiceStyle(style: DiceStyle) {
         context.dataStore.edit { settings ->
             settings[DICE_STYLE_KEY] = style.name
+        }
+    }
+    
+    suspend fun updateLastSelectedActionCardId(id: Long) {
+        context.dataStore.edit { settings ->
+            settings[LAST_SELECTED_ACTION_CARD_ID_KEY] = id
         }
     }
 }

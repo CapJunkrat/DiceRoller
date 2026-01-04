@@ -63,20 +63,36 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<DiceUiState> = combine(
         _internalState,
         repository.allActionCards,
-        settingsRepository.diceStyleFlow
-    ) { state, allCards, currentStyle ->
+        settingsRepository.diceStyleFlow,
+        settingsRepository.lastSelectedActionCardIdFlow
+    ) { state, allCards, currentStyle, lastSelectedId ->
         
         // Sort: System cards first, then Custom cards, both by creation order (ID)
         val sortedCards = allCards.sortedWith(
-            compareBy<ActionCard> { !it.isSystem } // System (true) comes first? No, !true is false. !false is true. false < true. So System first.
+            compareBy<ActionCard> { !it.isSystem } // System (true) comes first
             .thenBy { it.id }
         )
 
-        // Maintain selection if possible, else default to first
-        val newSelected = if (state.selectedActionCard != null) {
-            sortedCards.find { it.id == state.selectedActionCard.id && it.name == state.selectedActionCard.name } ?: sortedCards.firstOrNull()
-        } else {
-            sortedCards.firstOrNull()
+        // Determine selection
+        // 1. If internal state has a valid selection, use it.
+        // 2. If internal state is null (start-up) or selected card is gone (deleted), try to restore from lastSelectedId.
+        // 3. If lastSelectedId not found, try default "D20".
+        // 4. If "D20" not found, use first available card.
+        
+        var newSelected = state.selectedActionCard?.let { current ->
+             sortedCards.find { it.id == current.id }
+        }
+
+        if (newSelected == null) {
+             // Fallback logic
+             if (lastSelectedId != null) {
+                 newSelected = sortedCards.find { it.id == lastSelectedId }
+             }
+             
+             if (newSelected == null) {
+                 // Default to D20 if available, else first
+                 newSelected = sortedCards.find { it.name == "D20" } ?: sortedCards.firstOrNull()
+             }
         }
 
         state.copy(
@@ -113,6 +129,10 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             customModifier = 0,
             selectedRollMode = RollMode.NORMAL
         )
+        // Persist selection
+        viewModelScope.launch {
+            settingsRepository.updateLastSelectedActionCardId(card.id)
+        }
     }
     
     fun selectRollMode(mode: RollMode) {
