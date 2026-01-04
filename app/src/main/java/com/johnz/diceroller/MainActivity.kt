@@ -537,6 +537,13 @@ fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
         else baseColor
     }
 
+    // Secondary Color
+    val secondaryColor = if (uiState.isRolling) baseColor.copy(alpha = 0.6f) else {
+        if (step.isSecondaryCrit) CartoonColors.Gold.copy(alpha = 0.6f)
+        else if (step.isSecondaryFumble) CartoonColors.DarkRed.copy(alpha = 0.6f)
+        else baseColor.copy(alpha = 0.6f)
+    }
+
     // Animation vars
     val scale by animateFloatAsState(
         targetValue = if (uiState.isRolling) 0.9f else 1.0f,
@@ -622,7 +629,7 @@ fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
                      DiceRenderUnit(
                          style = uiState.diceStyle,
                          visualType = step.visualType,
-                         color = baseColor.copy(alpha = 0.6f),
+                         color = secondaryColor,
                          displayText = step.secondaryValue ?: ""
                      )
                  }
@@ -644,12 +651,24 @@ fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
                         color = CartoonColors.DarkRed,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Black,
-                        modifier = Modifier.align(Alignment.BottomCenter).offset(y = (-10).dp)
+                        modifier = Modifier.align(Alignment.BottomCenter).offset(y = 25.dp)
+                    )
+                } else if (step.isMiss) {
+                    Text(
+                        text = "MISS",
+                        color = CartoonColors.Outline,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.align(Alignment.BottomCenter).offset(y = 45.dp)
                     )
                 }
              }
         }
         
+        if (step.isFumble || step.isMiss) {
+            Spacer(modifier = Modifier.height(48.dp))
+        }
+
         // Detail
         Text(
             text = step.detail,

@@ -48,7 +48,10 @@ data class StepDisplayState(
     val detail: String = "",
     val visualType: DiceType = DiceType.CUSTOM,
     val isCrit: Boolean = false,
-    val isFumble: Boolean = false
+    val isFumble: Boolean = false,
+    val isSecondaryCrit: Boolean = false,
+    val isSecondaryFumble: Boolean = false,
+    val isMiss: Boolean = false
 )
 
 data class DiceUiState(
@@ -359,13 +362,13 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     } else {
                         if (!previousAttackHit) {
                             // Skipped step
-                            sbBreakdown.append("\n${step.name}: Skipped (Miss)")
+                            sbBreakdown.append("\n${step.name}: Missed")
                             val faces = DiceParser.getMaxFaces(step.formula)
                             calculatedSteps.add(StepDisplayState(
                                 name = step.name,
                                 primaryValue = "-",
                                 secondaryValue = null,
-                                detail = "Skipped",
+                                detail = "Missed",
                                 visualType = getDiceType(faces)
                             ))
                             continue
@@ -385,6 +388,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     val d20Rolls = result.rolls.filter { it.die is StandardDie && (it.die as StandardDie).faces == 20 }
                     var stepNat20 = false
                     var stepNat1 = false
+                    var secondaryNat20 = false
+                    var secondaryNat1 = false
                     
                     if (d20Rolls.isNotEmpty()) {
                          if (rollMode == RollMode.NORMAL) {
@@ -393,6 +398,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         } else {
                             stepNat20 = d20Rolls.any { it.value == 20 }
                             stepNat1 = d20Rolls.any { it.value == 1 }
+                            
+                            secondaryNat20 = d20Rolls.any { it.discardedValue == 20 }
+                            secondaryNat1 = d20Rolls.any { it.discardedValue == 1 }
                         }
                     }
 
@@ -411,13 +419,15 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                             previousAttackHit = true
                         }
                     }
+                    
+                    val isStepMiss = step.isAttack && !previousAttackHit
 
                     // Build Strings
                     if (index > 0) sbResult.append(" / ")
                     sbResult.append("${step.name}: ${result.total}")
                     if (stepNat20 && step.isAttack) sbResult.append(" (CRIT!)")
                     if (stepNat1 && step.isAttack) sbResult.append(" (MISS!)")
-                    else if (step.isAttack && !previousAttackHit) sbResult.append(" (Miss)") 
+                    else if (isStepMiss) sbResult.append(" (Miss)") 
 
                     if (index > 0) sbBreakdown.append(" | ")
                     sbBreakdown.append("${step.name}: ${result.breakdown}")
@@ -444,10 +454,13 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         name = step.name,
                         primaryValue = result.total.toString(),
                         secondaryValue = sVal,
-                        detail = result.breakdown + (if (stepNat20) " (Crit!)" else if (stepNat1) " (Miss!)" else ""),
+                        detail = result.breakdown + (if (stepNat20) " (Crit!)" else if (isStepMiss) " (Miss)" else ""),
                         visualType = if (visualT != DiceType.CUSTOM) visualT else card.visualType,
                         isCrit = stepNat20,
-                        isFumble = stepNat1
+                        isFumble = stepNat1,
+                        isSecondaryCrit = secondaryNat20,
+                        isSecondaryFumble = secondaryNat1,
+                        isMiss = isStepMiss
                     ))
                 }
                 
@@ -469,6 +482,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 val result = DiceParser.parseAndRoll(formula, rollMode, forcedD20Result)
                 
                 val diceRolls = result.rolls.filter { it.die !is ConstantDie }
+                var secondaryNat20 = false
+                var secondaryNat1 = false
                 
                 if (rollMode == RollMode.NORMAL) {
                      isOverallNat20 = diceRolls.any { 
@@ -483,6 +498,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     }
                      isOverallNat1 = diceRolls.any { 
                         it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.value == 1
+                    }
+                     secondaryNat20 = diceRolls.any { 
+                        it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.discardedValue == 20
+                    }
+                     secondaryNat1 = diceRolls.any { 
+                        it.die is StandardDie && (it.die as StandardDie).faces == 20 && it.discardedValue == 1
                     }
                 }
                 
@@ -507,7 +528,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                      detail = breakdownString,
                      visualType = card.visualType,
                      isCrit = isOverallNat20,
-                     isFumble = isOverallNat1
+                     isFumble = isOverallNat1,
+                     isSecondaryCrit = secondaryNat20,
+                     isSecondaryFumble = secondaryNat1
                 ))
             }
 
