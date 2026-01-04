@@ -416,34 +416,44 @@ fun DiceScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) {
-                        if (!uiState.isRolling) {
-                            view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
-                            viewModel.rollDice()
-                        }
-                    },
+                    .padding(innerPadding),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.weight(1f))
+                // Clickable Area Container
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            if (!uiState.isRolling) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CONFIRM)
+                                viewModel.rollDice()
+                            }
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(modifier = Modifier.weight(1f))
 
-                // Display selected action card or fallback
-                val currentCard = uiState.selectedActionCard
-                if (currentCard != null) {
-                    DiceDisplay(uiState = uiState, card = currentCard)
+                    // Display selected action card or fallback
+                    val currentCard = uiState.selectedActionCard
+                    if (currentCard != null) {
+                        DiceDisplay(uiState = uiState, card = currentCard)
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
+                // Non-clickable Control Area
                 DiceSelector(
                     uiState = uiState, 
                     onSelect = { viewModel.selectActionCard(it) }
                 )
 
                 // Controls Area
+                val currentCard = uiState.selectedActionCard
                 if (currentCard != null) {
                     if (currentCard.visualType == DiceType.CUSTOM) {
                         CustomFormulaInput(
