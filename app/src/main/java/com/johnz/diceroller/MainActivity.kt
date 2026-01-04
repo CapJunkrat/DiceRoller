@@ -44,6 +44,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
@@ -194,7 +195,7 @@ class SoundManager(context: Context) {
             .build()
 
         rollSoundId = soundPool.load(context, R.raw.dice_roll, 1)
-        winSoundId = soundPool.load(context, R.raw.win, 1) // Using arrive.flac for Win
+        winSoundId = soundPool.load(context, R.raw.win, 1) // Using win.flac for Win
         loseSoundId = soundPool.load(context, R.raw.lose, 1) // Using lose.flac for Lose
     }
 
@@ -577,63 +578,78 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
         DiceType.CUSTOM -> Color.LightGray
     }
 
-    val scale by animateFloatAsState(
+    val bounceScale by animateFloatAsState(
         targetValue = if (uiState.isRolling) 0.9f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMedium
         ),
-        label = "scale"
+        label = "bounceScale"
     )
+
+    // Animation Transitions for Adv/Dis
+    val transition = updateTransition(targetState = uiState.selectedRollMode, label = "RollModeTransition")
+    
+    val separationOffset by transition.animateDp(
+        transitionSpec = { tween(durationMillis = 400, easing = FastOutSlowInEasing) },
+        label = "Separation"
+    ) { mode ->
+        if (mode == RollMode.NORMAL) 0.dp else 80.dp // Moves left and right
+    }
+
+    val modeScale by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 400, easing = FastOutSlowInEasing) },
+        label = "Scale"
+    ) { mode ->
+        if (mode == RollMode.NORMAL) 1.0f else 0.65f // Shrink to fit two dice
+    }
+
+    val secondDieAlpha by transition.animateFloat(
+        transitionSpec = { tween(durationMillis = 400, easing = LinearEasing) },
+        label = "Alpha"
+    ) { mode ->
+        if (mode == RollMode.NORMAL) 0f else 1f
+    }
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier
-            .size(280.dp)
-            .scale(scale)
+        modifier = Modifier.size(280.dp) // Main container size
     ) {
-        // Render dice based on selected style
-        DiceShapeRenderer(
-            style = uiState.diceStyle,
-            type = card.visualType,
-            color = baseColor
-        )
-
-        // Adjust text offset logic based on dice shape
-        val textOffset = when(card.visualType) {
-            DiceType.D4 -> Modifier.offset(x = 24.dp, y = 16.dp)
-            DiceType.D6 -> Modifier.offset(x = (-12).dp, y = 12.dp)
-            DiceType.D8 -> Modifier.offset(y = (-4).dp)
-            DiceType.D10 -> Modifier.offset(y = (-12).dp)
-            else -> Modifier
+        // --- Dice 1 (Primary: Moves Left in Adv/Dis) ---
+        Box(
+            modifier = Modifier
+                .offset(x = -separationOffset)
+                .scale(bounceScale * modeScale)
+                .size(280.dp), // Size of individual die render space
+            contentAlignment = Alignment.Center
+        ) {
+            DiceRenderUnit(
+                uiState = uiState,
+                card = card,
+                color = baseColor,
+                displayText = uiState.displayedResult,
+                // Only show shadow for primary die if in Normal mode, or always? 
+                // Let's keep shadows consistent.
+            )
         }
 
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = textOffset
-        ) {
-            // Shadow text
-            if (uiState.diceStyle != DiceStyle.FLAT_2D) {
-                Text(
-                    text = uiState.displayedResult,
-                    fontSize = 64.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if(uiState.diceStyle == DiceStyle.REALISTIC_3D) Color.Black.copy(alpha = 0.3f) else CartoonColors.Outline.copy(alpha = 0.2f),
-                    textAlign = TextAlign.Center,
-                    style = MaterialTheme.typography.displayLarge.copy(
-                        drawStyle = Stroke(width = 12f, join = StrokeJoin.Round)
-                    ),
-                    modifier = Modifier.offset(x = 4.dp, y = 4.dp)
+        // --- Dice 2 (Secondary: Moves Right in Adv/Dis) ---
+        if (secondDieAlpha > 0f) {
+            Box(
+                modifier = Modifier
+                    .offset(x = separationOffset)
+                    .scale(bounceScale * modeScale)
+                    .alpha(secondDieAlpha)
+                    .size(280.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                DiceRenderUnit(
+                    uiState = uiState,
+                    card = card,
+                    color = baseColor,
+                    displayText = uiState.displayedResult2
                 )
             }
-            
-            Text(
-                text = uiState.displayedResult,
-                fontSize = 64.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                textAlign = TextAlign.Center
-            )
         }
     }
 
@@ -654,6 +670,59 @@ fun DiceDisplay(uiState: DiceUiState, card: ActionCard) {
                     textAlign = TextAlign.Center
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun DiceRenderUnit(
+    uiState: DiceUiState,
+    card: ActionCard,
+    color: Color,
+    displayText: String
+) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        DiceShapeRenderer(
+            style = uiState.diceStyle,
+            type = card.visualType,
+            color = color
+        )
+
+        // Adjust text offset logic based on dice shape
+        val textOffset = when (card.visualType) {
+            DiceType.D4 -> Modifier.offset(x = 24.dp, y = 16.dp)
+            DiceType.D6 -> Modifier.offset(x = (-12).dp, y = 12.dp)
+            DiceType.D8 -> Modifier.offset(y = (-4).dp)
+            DiceType.D10 -> Modifier.offset(y = (-12).dp)
+            else -> Modifier
+        }
+
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = textOffset
+        ) {
+            // Shadow text
+            if (uiState.diceStyle != DiceStyle.FLAT_2D) {
+                Text(
+                    text = displayText,
+                    fontSize = 64.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (uiState.diceStyle == DiceStyle.REALISTIC_3D) Color.Black.copy(alpha = 0.3f) else CartoonColors.Outline.copy(alpha = 0.2f),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.displayLarge.copy(
+                        drawStyle = Stroke(width = 12f, join = StrokeJoin.Round)
+                    ),
+                    modifier = Modifier.offset(x = 4.dp, y = 4.dp)
+                )
+            }
+
+            Text(
+                text = displayText,
+                fontSize = 64.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }

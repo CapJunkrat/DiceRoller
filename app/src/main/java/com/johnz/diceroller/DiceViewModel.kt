@@ -31,6 +31,7 @@ data class RollHistoryItem(
 
 data class DiceUiState(
     val displayedResult: String = "1",
+    val displayedResult2: String = "1", // Second die value for Adv/Dis
     val finalResult: Int = 1,
     val breakdown: String = "",
     val isRolling: Boolean = false,
@@ -132,6 +133,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         _internalState.value = _internalState.value.copy(
             selectedActionCard = card,
             displayedResult = "1",
+            displayedResult2 = "1",
             finalResult = 1,
             breakdown = "",
             customDiceCount = 1,
@@ -276,17 +278,23 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             var lastDisplayValueStr = _internalState.value.displayedResult
 
             while (System.currentTimeMillis() < startTime + animationDuration) {
-                // 2. Animation Logic (Simplified for now, just random numbers from result rolls or 1)
+                // 2. Animation Logic
                 var nextValue = 0
+                var nextValue2 = 0
                 if (result.rolls.isNotEmpty()) {
-                    // Just pick a random value related to max possible for animation
-                    // Or simulate rolling.
                     nextValue = kotlin.random.Random.nextInt(1, result.maxTotal + 1)
+                    if (rollMode != RollMode.NORMAL) {
+                        nextValue2 = kotlin.random.Random.nextInt(1, result.maxTotal + 1)
+                    }
                 } else {
                     nextValue = 1
+                    nextValue2 = 1
                 }
 
-                _internalState.value = _internalState.value.copy(displayedResult = nextValue.toString())
+                _internalState.value = _internalState.value.copy(
+                    displayedResult = nextValue.toString(),
+                    displayedResult2 = nextValue2.toString()
+                )
                 delay(updateInterval)
             }
 
@@ -296,22 +304,41 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 breakdown = result.breakdown
             )
             
+            // Extract raw dice values if Adv/Dis
+            var finalDisplay1 = result.total.toString()
+            var finalDisplay2 = "1"
+            
+            if (rollMode != RollMode.NORMAL) {
+                // Breakdown is like "Adv: [15], 4 -> ..."
+                val regex = Regex("(?:\\[(\\d+)\\]|(\\d+))")
+                val matches = regex.findAll(result.breakdown).toList()
+                if (matches.size >= 2) {
+                    val first = matches[0].value.replace("[", "").replace("]", "")
+                    val second = matches[1].value.replace("[", "").replace("]", "")
+                    // Since Adv/Dis logic might swap order, just showing them as they appear in string
+                    finalDisplay1 = first
+                    finalDisplay2 = second
+                }
+            } else {
+                finalDisplay1 = result.total.toString()
+                finalDisplay2 = result.total.toString()
+            }
+            
             val activeSession = _internalState.value.activeSession
+            
+            val newState = _internalState.value.copy(
+                isRolling = false,
+                displayedResult = finalDisplay1,
+                displayedResult2 = finalDisplay2,
+                finalResult = result.total,
+                breakdown = result.breakdown
+            )
             
             if (activeSession != null) {
                 repository.addRoll(activeSession.id, result.total.toString(), result.breakdown)
-                _internalState.value = _internalState.value.copy(
-                    isRolling = false,
-                    displayedResult = result.total.toString(),
-                    finalResult = result.total,
-                    breakdown = result.breakdown
-                )
+                _internalState.value = newState
             } else {
-                _internalState.value = _internalState.value.copy(
-                    isRolling = false,
-                    displayedResult = result.total.toString(),
-                    finalResult = result.total,
-                    breakdown = result.breakdown,
+                _internalState.value = newState.copy(
                     history = listOf(newHistoryItem) + _internalState.value.history
                 )
             }
