@@ -137,10 +137,40 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
 
     fun duplicateActionCard(card: ActionCard) {
         viewModelScope.launch {
+            val existingNames = gameRepository.getAllCardNames().toSet()
+            var newName = card.name
+            
+            // Regex to check if name already ends with (N)
+            val regex = Regex("^(.*) \\((\\d+)\\)$")
+            val match = regex.find(newName)
+            
+            var baseName = newName
+            var counter = 1
+            
+            if (match != null) {
+                baseName = match.groupValues[1]
+                counter = match.groupValues[2].toInt() + 1
+            }
+            
+            // Generate next available name
+            // If baseName doesn't exist, we could technically use it, but "duplicate" usually implies we want a copy.
+            // If the user is copying "Fireball", they get "Fireball (1)".
+            // If they copy "Fireball (1)", they get "Fireball (2)".
+            
+            // If the regex didn't match, we start trying "BaseName (1)".
+            // If it matched, we start with "BaseName (counter)".
+            
+            var potentialName = if (match == null) "$baseName ($counter)" else "$baseName ($counter)"
+            
+            while (existingNames.contains(potentialName)) {
+                counter++
+                potentialName = "$baseName ($counter)"
+            }
+
             gameRepository.insertActionCard(
                 card.copy(
                     id = 0, // 0 triggers auto-increment
-                    name = "${card.name} Copy",
+                    name = potentialName,
                     isSystem = false // Always duplicate as custom
                 )
             )

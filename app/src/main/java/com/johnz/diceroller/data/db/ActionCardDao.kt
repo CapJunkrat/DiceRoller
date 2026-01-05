@@ -27,4 +27,7 @@ interface ActionCardDao {
     
     @Query("SELECT COUNT(*) FROM action_cards")
     suspend fun getCount(): Int
+
+    @Query("SELECT name FROM action_cards")
+    suspend fun getAllCardNames(): List<String>
 }

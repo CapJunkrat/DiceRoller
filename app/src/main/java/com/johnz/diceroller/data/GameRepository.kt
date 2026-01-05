@@ -80,6 +80,7 @@ class GameRepository(private val database: AppDatabase) {
     suspend fun insertActionCard(card: ActionCard) = cardDao.insert(card)
     suspend fun updateActionCard(card: ActionCard) = cardDao.update(card)
     suspend fun deleteActionCard(card: ActionCard) = cardDao.delete(card)
+    suspend fun getAllCardNames(): List<String> = cardDao.getAllCardNames()
 
     suspend fun initSystemCardsIfNeeded() {
         if (cardDao.getCount() == 0) {
