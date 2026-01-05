@@ -87,12 +87,24 @@ data class DiceUiState(
     
     // Cheats
     val cheatNat20: Boolean = false,
-    val cheatNat1: Boolean = false
+    val cheatNat1: Boolean = false,
+
+    // Settings
+    val soundEnabled: Boolean = true,
+    val critEffectsEnabled: Boolean = true
 )
 
 data class CheatState(
     val cheatNat20: Boolean = false,
     val cheatNat1: Boolean = false
+)
+
+// Helper class to group settings flows
+data class DiceSettings(
+    val diceStyle: DiceStyle,
+    val lastSelectedActionCardId: Long?,
+    val soundEnabled: Boolean,
+    val critEffectsEnabled: Boolean
 )
 
 data class ComboStep(val name: String, val formula: String, val isAttack: Boolean, val threshold: Int = 0)
@@ -103,7 +115,8 @@ sealed interface GameEvent {
         val result: Int, 
         val type: DiceType,
         val isNat20: Boolean = false,
-        val isNat1: Boolean = false
+        val isNat1: Boolean = false,
+        val playSound: Boolean = true
     ) : GameEvent
 }
 
@@ -122,15 +135,29 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     ) { nat20, nat1 ->
         CheatState(nat20, nat1)
     }
+    
+    // Combine Settings Flows to reduce arguments for the main combine
+    private val settingsFlow = combine(
+        settingsRepository.diceStyleFlow,
+        settingsRepository.lastSelectedActionCardIdFlow,
+        settingsRepository.soundEnabledFlow,
+        settingsRepository.critEffectsEnabledFlow
+    ) { style, lastId, sound, crit ->
+        DiceSettings(style, lastId, sound, crit)
+    }
 
     val uiState: StateFlow<DiceUiState> = combine(
         _internalState,
         repository.allActionCards,
-        settingsRepository.diceStyleFlow,
-        settingsRepository.lastSelectedActionCardIdFlow,
-        cheatStateFlow
-    ) { state, allCards, currentStyle, lastSelectedId, cheatState ->
+        cheatStateFlow,
+        settingsFlow
+    ) { state, allCards, cheatState, settings ->
         
+        val currentStyle = settings.diceStyle
+        val lastSelectedId = settings.lastSelectedActionCardId
+        val soundEnabled = settings.soundEnabled
+        val critEffectsEnabled = settings.critEffectsEnabled
+
         // Sort: System cards first, then Custom cards, both by creation order (ID)
         val sortedCards = allCards.sortedWith(
             compareBy<ActionCard> { !it.isSystem } // System (true) comes first
@@ -175,7 +202,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
             diceStyle = currentStyle,
             cheatNat20 = cheatState.cheatNat20,
             cheatNat1 = cheatState.cheatNat1,
-            rollSteps = steps
+            rollSteps = steps,
+            soundEnabled = soundEnabled,
+            critEffectsEnabled = critEffectsEnabled
         )
     }.stateIn(
         scope = viewModelScope,
@@ -333,6 +362,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
         val currentState = uiState.value
         val card = currentState.selectedActionCard ?: return
         val rollMode = currentState.selectedRollMode
+        val showCrit = currentState.critEffectsEnabled
 
         rollJob?.cancel()
         rollJob = viewModelScope.launch {
@@ -342,7 +372,9 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 rollTrigger = triggerTime,
                 criticalState = CriticalState.NORMAL
             )
-            _gameEvents.emit(GameEvent.RollStarted)
+            if (currentState.soundEnabled) {
+                _gameEvents.emit(GameEvent.RollStarted)
+            }
 
             // Check for Cheat/Debug overrides
             val forcedD20Result = if (currentState.cheatNat20) 20 else if (currentState.cheatNat1) 1 else null
@@ -463,12 +495,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         name = step.name,
                         primaryValue = result.total.toString(),
                         secondaryValue = sVal,
-                        detail = result.breakdown + (if (stepNat20) " (Crit!)" else if (isStepMiss) " (Miss)" else ""),
+                        detail = result.breakdown + (if (stepNat20 && showCrit) " (Crit!)" else if (isStepMiss) " (Miss)" else ""),
                         visualType = if (visualT != DiceType.CUSTOM) visualT else card.visualType,
-                        isCrit = stepNat20,
-                        isFumble = stepNat1,
-                        isSecondaryCrit = secondaryNat20,
-                        isSecondaryFumble = secondaryNat1,
+                        isCrit = stepNat20 && showCrit,
+                        isFumble = stepNat1 && showCrit,
+                        isSecondaryCrit = secondaryNat20 && showCrit,
+                        isSecondaryFumble = secondaryNat1 && showCrit,
                         isMiss = isStepMiss
                     ))
                 }
@@ -536,14 +568,18 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                      secondaryValue = sVal,
                      detail = breakdownString,
                      visualType = card.visualType,
-                     isCrit = isOverallNat20,
-                     isFumble = isOverallNat1,
-                     isSecondaryCrit = secondaryNat20,
-                     isSecondaryFumble = secondaryNat1
+                     isCrit = isOverallNat20 && showCrit,
+                     isFumble = isOverallNat1 && showCrit,
+                     isSecondaryCrit = secondaryNat20 && showCrit,
+                     isSecondaryFumble = secondaryNat1 && showCrit
                 ))
             }
 
-            val finalCriticalState = if (isOverallNat20) CriticalState.CRIT_HIT else if (isOverallNat1) CriticalState.CRIT_MISS else CriticalState.NORMAL
+            val finalCriticalState = if (currentState.critEffectsEnabled) {
+                if (isOverallNat20) CriticalState.CRIT_HIT else if (isOverallNat1) CriticalState.CRIT_MISS else CriticalState.NORMAL
+            } else {
+                CriticalState.NORMAL
+            }
 
             // Animation
             val animationDuration = 500L
@@ -591,7 +627,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     result = resultTotal, 
                     type = card.visualType,
                     isNat20 = isOverallNat20,
-                    isNat1 = isOverallNat1
+                    isNat1 = isOverallNat1,
+                    playSound = currentState.soundEnabled
                 )
             )
         }

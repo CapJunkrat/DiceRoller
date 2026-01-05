@@ -326,10 +326,12 @@ fun DiceScreen(
                 soundManager.playRollSound()
             }
             if (event is GameEvent.RollFinished) {
-                if (event.isNat20) {
-                    soundManager.playWinSound()
-                } else if (event.isNat1) {
-                    soundManager.playLoseSound()
+                if (event.playSound) {
+                    if (event.isNat20) {
+                        soundManager.playWinSound()
+                    } else if (event.isNat1) {
+                        soundManager.playLoseSound()
+                    }
                 }
             }
         }

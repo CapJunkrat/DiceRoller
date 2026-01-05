@@ -55,6 +55,20 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     val debugModeEnabled: StateFlow<Boolean> = DebugModeManager.debugModeEnabled
     val alwaysNat20: StateFlow<Boolean> = DebugModeManager.alwaysNat20
     val alwaysNat1: StateFlow<Boolean> = DebugModeManager.alwaysNat1
+    
+    val soundEnabled: StateFlow<Boolean> = settingsRepository.soundEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true
+        )
+
+    val critEffectsEnabled: StateFlow<Boolean> = settingsRepository.critEffectsEnabledFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true
+        )
 
     init {
         checkSystemHapticsStatus()
@@ -85,6 +99,18 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun onDiceStyleChanged(style: DiceStyle) {
         viewModelScope.launch {
             settingsRepository.updateDiceStyle(style)
+        }
+    }
+
+    fun onSoundEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateSoundEnabled(enabled)
+        }
+    }
+
+    fun onCritEffectsEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateCritEffectsEnabled(enabled)
         }
     }
     

@@ -21,6 +21,8 @@ class SettingsRepository(private val context: Context) {
         private val CUSTOM_DICE_VISIBLE_KEY = booleanPreferencesKey("custom_dice_visible")
         private val DICE_STYLE_KEY = stringPreferencesKey("dice_visual_style")
         private val LAST_SELECTED_ACTION_CARD_ID_KEY = longPreferencesKey("last_selected_action_card_id")
+        private val SOUND_ENABLED_KEY = booleanPreferencesKey("sound_enabled")
+        private val CRIT_EFFECTS_ENABLED_KEY = booleanPreferencesKey("crit_effects_enabled")
 
         val DEFAULT_DICE_FACES = setOf("4", "6", "8", "10", "12", "20", "100")
     }
@@ -50,6 +52,16 @@ class SettingsRepository(private val context: Context) {
         .map { preferences ->
             preferences[LAST_SELECTED_ACTION_CARD_ID_KEY]
         }
+        
+    val soundEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[SOUND_ENABLED_KEY] ?: true
+        }
+
+    val critEffectsEnabledFlow: Flow<Boolean> = context.dataStore.data
+        .map { preferences ->
+            preferences[CRIT_EFFECTS_ENABLED_KEY] ?: true
+        }
 
     suspend fun updateVisibleDice(visibleFaces: Set<Int>) {
         context.dataStore.edit { settings ->
@@ -73,6 +85,18 @@ class SettingsRepository(private val context: Context) {
     suspend fun updateLastSelectedActionCardId(id: Long) {
         context.dataStore.edit { settings ->
             settings[LAST_SELECTED_ACTION_CARD_ID_KEY] = id
+        }
+    }
+
+    suspend fun updateSoundEnabled(enabled: Boolean) {
+        context.dataStore.edit { settings ->
+            settings[SOUND_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateCritEffectsEnabled(enabled: Boolean) {
+        context.dataStore.edit { settings ->
+            settings[CRIT_EFFECTS_ENABLED_KEY] = enabled
         }
     }
 }

@@ -93,6 +93,8 @@ fun SettingsScreen(
     val debugModeEnabled by viewModel.debugModeEnabled.collectAsState()
     val alwaysNat20 by viewModel.alwaysNat20.collectAsState()
     val alwaysNat1 by viewModel.alwaysNat1.collectAsState()
+    val soundEnabled by viewModel.soundEnabled.collectAsState()
+    val critEffectsEnabled by viewModel.critEffectsEnabled.collectAsState()
     
     val context = LocalContext.current
     
@@ -289,6 +291,34 @@ fun SettingsScreen(
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Create New Action Card")
+            }
+            
+            Divider(modifier = Modifier.padding(vertical = 16.dp))
+            
+            Text(
+                text = "General",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Sound Effects")
+                Switch(checked = soundEnabled, onCheckedChange = { viewModel.onSoundEnabledChanged(it) })
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("Critical Hit/Miss Effects")
+                Switch(checked = critEffectsEnabled, onCheckedChange = { viewModel.onCritEffectsEnabledChanged(it) })
             }
             
             Divider(modifier = Modifier.padding(vertical = 16.dp))
