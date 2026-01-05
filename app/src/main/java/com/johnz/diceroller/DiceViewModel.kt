@@ -51,7 +51,8 @@ data class StepDisplayState(
     val isFumble: Boolean = false,
     val isSecondaryCrit: Boolean = false,
     val isSecondaryFumble: Boolean = false,
-    val isMiss: Boolean = false
+    val isMiss: Boolean = false,
+    val isAttack: Boolean = true
 )
 
 data class DiceUiState(
@@ -187,12 +188,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 parseSteps(newSelected.steps).map {
                      val faces = DiceParser.getMaxFaces(it.formula)
                      val type = getDiceType(faces)
-                     val isSplit = state.selectedRollMode != RollMode.NORMAL && type == DiceType.D20
-                     StepDisplayState(it.name, "?", if (isSplit) "?" else null, "", if (type == DiceType.CUSTOM) newSelected.visualType else type)
+                     val isSplit = state.selectedRollMode != RollMode.NORMAL && type == DiceType.D20 && it.isAttack
+                     StepDisplayState(it.name, "?", if (isSplit) "?" else null, "", if (type == DiceType.CUSTOM) newSelected.visualType else type, isAttack = it.isAttack)
                 }
             } else {
                 val isSplit = state.selectedRollMode != RollMode.NORMAL && newSelected.visualType == DiceType.D20
-                listOf(StepDisplayState(newSelected.name, "?", if (isSplit) "?" else null, "", newSelected.visualType))
+                listOf(StepDisplayState(newSelected.name, "?", if (isSplit) "?" else null, "", newSelected.visualType, isAttack = true))
             }
         } else state.rollSteps
 
@@ -245,10 +246,10 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
              parseSteps(card.steps).map { 
                  val faces = DiceParser.getMaxFaces(it.formula)
                  val type = getDiceType(faces)
-                 StepDisplayState(it.name, "?", null, "", if (type == DiceType.CUSTOM) card.visualType else type)
+                 StepDisplayState(it.name, "?", null, "", if (type == DiceType.CUSTOM) card.visualType else type, isAttack = it.isAttack)
              }
         } else {
-             listOf(StepDisplayState(card.name, "?", null, "", card.visualType))
+             listOf(StepDisplayState(card.name, "?", null, "", card.visualType, isAttack = true))
         }
 
         // Reset interactive controls, roll mode, and critical state when switching
@@ -272,7 +273,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     
     fun selectRollMode(mode: RollMode) {
         val currentSteps = _internalState.value.rollSteps.map { step ->
-            val shouldShowSplit = mode != RollMode.NORMAL && step.visualType == DiceType.D20
+            val shouldShowSplit = mode != RollMode.NORMAL && step.visualType == DiceType.D20 && step.isAttack
             step.copy(secondaryValue = if (shouldShowSplit) (step.secondaryValue ?: "?") else null)
         }
         _internalState.value = _internalState.value.copy(
@@ -410,7 +411,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                                 primaryValue = "-",
                                 secondaryValue = null,
                                 detail = "Missed",
-                                visualType = getDiceType(faces)
+                                visualType = getDiceType(faces),
+                                isAttack = step.isAttack
                             ))
                             continue
                         }
@@ -424,7 +426,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     // Roll Step
-                    val result = DiceParser.parseAndRoll(formulaToRoll, rollMode, forcedD20Result)
+                    val stepRollMode = if (step.isAttack) rollMode else RollMode.NORMAL
+                    val result = DiceParser.parseAndRoll(formulaToRoll, stepRollMode, forcedD20Result)
                     
                     val d20Rolls = result.rolls.filter { it.die is StandardDie && (it.die as StandardDie).faces == 20 }
                     var stepNat20 = false
@@ -433,7 +436,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     var secondaryNat1 = false
                     
                     if (d20Rolls.isNotEmpty()) {
-                         if (rollMode == RollMode.NORMAL) {
+                         if (stepRollMode == RollMode.NORMAL) {
                             stepNat20 = d20Rolls.any { it.value == 20 }
                             stepNat1 = d20Rolls.any { it.value == 1 }
                         } else {
@@ -480,7 +483,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                     
                     // Populate Step Display
                     var sVal: String? = null
-                    if (rollMode != RollMode.NORMAL && d20Rolls.isNotEmpty()) {
+                    if (stepRollMode != RollMode.NORMAL && d20Rolls.isNotEmpty()) {
                          val delta = result.rolls.sumOf { roll ->
                              val kept = roll.value
                              val discarded = roll.discardedValue ?: kept 
@@ -501,7 +504,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         isFumble = stepNat1 && showCrit,
                         isSecondaryCrit = secondaryNat20 && showCrit,
                         isSecondaryFumble = secondaryNat1 && showCrit,
-                        isMiss = isStepMiss
+                        isMiss = isStepMiss,
+                        isAttack = step.isAttack
                     ))
                 }
                 
@@ -571,7 +575,8 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                      isCrit = isOverallNat20 && showCrit,
                      isFumble = isOverallNat1 && showCrit,
                      isSecondaryCrit = secondaryNat20 && showCrit,
-                     isSecondaryFumble = secondaryNat1 && showCrit
+                     isSecondaryFumble = secondaryNat1 && showCrit,
+                     isAttack = true
                 ))
             }
 
@@ -590,7 +595,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                      val faces = step.visualType.faces
                      val maxVal = if (faces > 0) faces else 20
                      val r1 = kotlin.random.Random.nextInt(1, maxVal + 1).toString()
-                     val r2 = if (step.visualType == DiceType.D20 && rollMode != RollMode.NORMAL) 
+                     val r2 = if (step.visualType == DiceType.D20 && rollMode != RollMode.NORMAL && step.isAttack) 
                          kotlin.random.Random.nextInt(1, maxVal + 1).toString() else null
                      
                      step.copy(primaryValue = r1, secondaryValue = r2, detail = "Rolling...")
