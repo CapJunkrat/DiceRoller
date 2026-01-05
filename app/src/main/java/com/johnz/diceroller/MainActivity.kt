@@ -645,7 +645,7 @@ fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
                         color = CartoonColors.Gold,
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Black,
-                        modifier = Modifier.align(Alignment.TopCenter).offset(y = 10.dp)
+                        modifier = Modifier.align(Alignment.BottomCenter).offset(y = 25.dp)
                     )
                 } else if (step.isFumble) {
                     Text(
@@ -667,7 +667,7 @@ fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
              }
         }
         
-        if (step.isFumble || step.isMiss) {
+        if (step.isFumble || step.isMiss || step.isCrit) {
             Spacer(modifier = Modifier.height(48.dp))
         }
 
