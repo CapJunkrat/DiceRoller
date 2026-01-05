@@ -576,15 +576,17 @@ fun StepDisplay(step: StepDisplayState, uiState: DiceUiState) {
     val targetAlpha = if (showDual) 1f else 0f
     val secondDieAlpha by animateFloatAsState(targetValue = targetAlpha, label = "alpha")
     
-    // Shake Animation for Fumble
+    // Shake Animation for Fumble or Crit
     val shakeOffset = remember { Animatable(0f) }
-    LaunchedEffect(step.isFumble) {
-        if (step.isFumble && !uiState.isRolling) {
+    LaunchedEffect(step.isFumble, step.isCrit, uiState.isRolling) {
+        if (!uiState.isRolling && (step.isFumble || step.isCrit)) {
             for (i in 0..5) {
                 shakeOffset.animateTo(10f, animationSpec = tween(50))
                 shakeOffset.animateTo(-10f, animationSpec = tween(50))
             }
             shakeOffset.animateTo(0f)
+        } else {
+             shakeOffset.snapTo(0f)
         }
     }
 
