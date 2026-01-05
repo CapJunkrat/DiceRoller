@@ -189,7 +189,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                      val faces = DiceParser.getMaxFaces(it.formula)
                      val type = getDiceType(faces)
                      val isSplit = state.selectedRollMode != RollMode.NORMAL && type == DiceType.D20 && it.isAttack
-                     StepDisplayState(it.name, "?", if (isSplit) "?" else null, "", if (type == DiceType.CUSTOM) newSelected.visualType else type, isAttack = it.isAttack)
+                     StepDisplayState(it.name, "?", if (isSplit) "?" else null, "", type, isAttack = it.isAttack)
                 }
             } else {
                 val isSplit = state.selectedRollMode != RollMode.NORMAL && newSelected.visualType == DiceType.D20
@@ -246,7 +246,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
              parseSteps(card.steps).map { 
                  val faces = DiceParser.getMaxFaces(it.formula)
                  val type = getDiceType(faces)
-                 StepDisplayState(it.name, "?", null, "", if (type == DiceType.CUSTOM) card.visualType else type, isAttack = it.isAttack)
+                 StepDisplayState(it.name, "?", null, "", type, isAttack = it.isAttack)
              }
         } else {
              listOf(StepDisplayState(card.name, "?", null, "", card.visualType, isAttack = true))
@@ -499,7 +499,7 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                         primaryValue = result.total.toString(),
                         secondaryValue = sVal,
                         detail = result.breakdown + (if (stepNat20 && showCrit) " (Crit!)" else if (isStepMiss) " (Miss)" else ""),
-                        visualType = if (visualT != DiceType.CUSTOM) visualT else card.visualType,
+                        visualType = visualT,
                         isCrit = stepNat20 && showCrit,
                         isFumble = stepNat1 && showCrit,
                         isSecondaryCrit = secondaryNat20 && showCrit,
