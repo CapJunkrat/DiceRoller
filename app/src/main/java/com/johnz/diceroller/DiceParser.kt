@@ -113,8 +113,8 @@ object DiceParser {
                             discardedValue = max(v1, v2)
                         }
                         
-                        // Breakdown string representation: 18|5
-                        currentTermRollsStr.add("${rollValue}|${discardedValue}")
+                        // Breakdown string representation: 18,5 (Changed from | to , to avoid confusing HistoryScreen parser)
+                        currentTermRollsStr.add("${rollValue},${discardedValue}")
                     } else {
                         // Standard Roll
                          rollValue = if (faces == 20 && forcedD20Result != null) {
