@@ -160,10 +160,12 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
                 parseSteps(newSelected.steps).map {
                      val faces = DiceParser.getMaxFaces(it.formula)
                      val type = getDiceType(faces)
-                     StepDisplayState(it.name, "?", null, "", if (type == DiceType.CUSTOM) newSelected.visualType else type)
+                     val isSplit = state.selectedRollMode != RollMode.NORMAL && type == DiceType.D20
+                     StepDisplayState(it.name, "?", if (isSplit) "?" else null, "", if (type == DiceType.CUSTOM) newSelected.visualType else type)
                 }
             } else {
-                listOf(StepDisplayState(newSelected.name, "?", null, "", newSelected.visualType))
+                val isSplit = state.selectedRollMode != RollMode.NORMAL && newSelected.visualType == DiceType.D20
+                listOf(StepDisplayState(newSelected.name, "?", if (isSplit) "?" else null, "", newSelected.visualType))
             }
         } else state.rollSteps
 
@@ -240,7 +242,14 @@ class DiceViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     fun selectRollMode(mode: RollMode) {
-        _internalState.value = _internalState.value.copy(selectedRollMode = mode)
+        val currentSteps = _internalState.value.rollSteps.map { step ->
+            val shouldShowSplit = mode != RollMode.NORMAL && step.visualType == DiceType.D20
+            step.copy(secondaryValue = if (shouldShowSplit) (step.secondaryValue ?: "?") else null)
+        }
+        _internalState.value = _internalState.value.copy(
+            selectedRollMode = mode,
+            rollSteps = currentSteps
+        )
     }
 
     fun updateCustomFormula(formula: String) {
