@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ActionCardDao {
-    @Query("SELECT * FROM action_cards ORDER BY isSystem DESC, name ASC")
+    @Query("SELECT * FROM action_cards ORDER BY isSystem DESC, id ASC")
     fun getAllCards(): Flow<List<ActionCard>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

@@ -11,18 +11,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,6 +76,15 @@ val CopyIcon: ImageVector = ImageVector.Builder(
     }
 }.build()
 
+// Unified Dialog State
+sealed interface SettingsDialogState {
+    data object None : SettingsDialogState
+    data object Add : SettingsDialogState
+    data class Edit(val card: ActionCard) : SettingsDialogState
+    data class Delete(val card: ActionCard) : SettingsDialogState
+    data object Credits : SettingsDialogState
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -87,117 +92,115 @@ fun SettingsScreen(
     onNavigateToDonate: () -> Unit,
     viewModel: SettingsViewModel = viewModel()
 ) {
-    val isSystemHapticsEnabled by viewModel.isSystemHapticsEnabled.collectAsState()
-    val allCards by viewModel.allActionCards.collectAsState()
-    
-    val debugModeEnabled by viewModel.debugModeEnabled.collectAsState()
-    val alwaysNat20 by viewModel.alwaysNat20.collectAsState()
-    val alwaysNat1 by viewModel.alwaysNat1.collectAsState()
-    val soundEnabled by viewModel.soundEnabled.collectAsState()
-    val critEffectsEnabled by viewModel.critEffectsEnabled.collectAsState()
+    // 1. Decoupled State Observation
+    val actionCards by viewModel.actionCardsState.collectAsState()
+    val settingsState by viewModel.generalSettingsState.collectAsState()
     
     val context = LocalContext.current
     
-    var showAddCardDialog by remember { mutableStateOf(false) }
-    var cardToEdit by remember { mutableStateOf<ActionCard?>(null) }
-    var cardToDelete by remember { mutableStateOf<ActionCard?>(null) }
-    var showCreditsDialog by remember { mutableStateOf(false) }
+    // UI State for Dialogs managed via Sealed Class
+    var dialogState by remember { mutableStateOf<SettingsDialogState>(SettingsDialogState.None) }
     
     var titleTapCount by remember { mutableStateOf(0) }
 
-    if (showAddCardDialog) {
-        ActionCardDialog(
-            title = "New Action Card",
-            confirmText = "Create",
-            existingNames = allCards.map { it.name },
-            onDismiss = { showAddCardDialog = false },
-            onConfirm = { name, formula, visual, type, steps ->
-                viewModel.addCustomActionCard(name, formula, visual, type, steps)
-                showAddCardDialog = false
-            }
-        )
-    }
-
-    if (cardToEdit != null) {
-        ActionCardDialog(
-            title = "Edit Action Card",
-            confirmText = "Update",
-            existingNames = allCards.filter { it.id != cardToEdit!!.id }.map { it.name },
-            initialName = cardToEdit!!.name,
-            initialFormula = cardToEdit!!.formula,
-            initialVisual = cardToEdit!!.visualType,
-            initialType = cardToEdit!!.type,
-            initialSteps = cardToEdit!!.steps,
-            onDismiss = { cardToEdit = null },
-            onConfirm = { name, formula, visual, type, steps ->
-                val updatedCard = cardToEdit!!.copy(
-                    name = name,
-                    formula = formula,
-                    visualType = visual,
-                    type = type,
-                    steps = steps
-                )
-                viewModel.updateActionCard(updatedCard)
-                cardToEdit = null
-            }
-        )
-    }
-
-    if (cardToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { cardToDelete = null },
-            title = { Text("Delete Action Card?") },
-            text = { Text("Are you sure you want to delete '${cardToDelete?.name}'?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        cardToDelete?.let { viewModel.deleteActionCard(it) }
-                        cardToDelete = null
+    // ... Dialogs ...
+    when (val state = dialogState) {
+        SettingsDialogState.Add -> {
+            ActionCardDialog(
+                title = "New Action Card",
+                confirmText = "Create",
+                existingNames = actionCards.map { it.name },
+                onDismiss = { dialogState = SettingsDialogState.None },
+                onConfirm = { name, formula, visual, type, steps ->
+                    viewModel.addCustomActionCard(name, formula, visual, type, steps)
+                    dialogState = SettingsDialogState.None
+                }
+            )
+        }
+        is SettingsDialogState.Edit -> {
+            ActionCardDialog(
+                title = "Edit Action Card",
+                confirmText = "Update",
+                existingNames = actionCards.filter { it.id != state.card.id }.map { it.name },
+                initialName = state.card.name,
+                initialFormula = state.card.formula,
+                initialVisual = state.card.visualType,
+                initialType = state.card.type,
+                initialSteps = state.card.steps,
+                onDismiss = { dialogState = SettingsDialogState.None },
+                onConfirm = { name, formula, visual, type, steps ->
+                    val updatedCard = state.card.copy(
+                        name = name,
+                        formula = formula,
+                        visualType = visual,
+                        type = type,
+                        steps = steps
+                    )
+                    viewModel.updateActionCard(updatedCard)
+                    dialogState = SettingsDialogState.None
+                }
+            )
+        }
+        is SettingsDialogState.Delete -> {
+            AlertDialog(
+                onDismissRequest = { dialogState = SettingsDialogState.None },
+                title = { Text("Delete Action Card?") },
+                text = { Text("Are you sure you want to delete '${state.card.name}'?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.deleteActionCard(state.card)
+                            dialogState = SettingsDialogState.None
+                        }
+                    ) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
                     }
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                },
+                dismissButton = {
+                    TextButton(onClick = { dialogState = SettingsDialogState.None }) {
+                        Text("Cancel")
+                    }
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { cardToDelete = null }) {
-                    Text("Cancel")
+            )
+        }
+        SettingsDialogState.Credits -> {
+            AlertDialog(
+                onDismissRequest = { dialogState = SettingsDialogState.None },
+                title = { Text("Credits") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(text = "Sound Effects", fontWeight = FontWeight.Bold)
+                        Text(text = "“Various sound effects from Rubik's Race”")
+                        Text(text = "by Nick Bowler, licensed under CC BY 3.0")
+                        Text(text = "https://creativecommons.org/licenses/by/3.0/")
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { dialogState = SettingsDialogState.None }) {
+                        Text("Close")
+                    }
                 }
-            }
-        )
-    }
-
-    if (showCreditsDialog) {
-        AlertDialog(
-            onDismissRequest = { showCreditsDialog = false },
-            title = { Text("Credits") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(text = "Sound Effects", fontWeight = FontWeight.Bold)
-                    Text(text = "“Various sound effects from Rubik's Race”")
-                    Text(text = "by Nick Bowler, licensed under CC BY 3.0")
-                    Text(text = "https://creativecommons.org/licenses/by/3.0/")
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showCreditsDialog = false }) {
-                    Text("Close")
-                }
-            }
-        )
+            )
+        }
+        SettingsDialogState.None -> {
+            // No dialog
+        }
     }
 
     Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { 
                     Text(
                         text = "Settings",
                         modifier = Modifier.clickable {
-                            if (!debugModeEnabled) {
+                            if (!settingsState.debugModeEnabled) {
                                 titleTapCount++
                                 if (titleTapCount >= 10) {
                                     viewModel.setDebugModeEnabled(true)
-                                    Toast.makeText(context, "Debug Mode Enabled (If Debug Build)", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Debug Mode Enabled", Toast.LENGTH_SHORT).show()
                                     titleTapCount = 0
                                 }
                             }
@@ -212,152 +215,171 @@ fun SettingsScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
+                .padding(paddingValues),
+            contentPadding = PaddingValues(bottom = 32.dp)
         ) {
             
-            if (!isSystemHapticsEnabled) {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
-                        .clickable {
-                            val intent = Intent(Settings.ACTION_SOUND_SETTINGS)
-                            if (intent.resolveActivity(context.packageManager) != null) {
-                                context.startActivity(intent)
-                            } else {
-                                context.startActivity(Intent(Settings.ACTION_SETTINGS))
+            // Haptic Warning: Conditional but keyed
+            if (!settingsState.isSystemHapticsEnabled) {
+                item(key = "haptic_warning") {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            .clickable {
+                                val intent = Intent(Settings.ACTION_SOUND_SETTINGS)
+                                if (intent.resolveActivity(context.packageManager) != null) {
+                                    context.startActivity(intent)
+                                } else {
+                                    context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                                }
                             }
-                        }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning, 
-                            contentDescription = "Warning",
-                            modifier = Modifier.padding(end = 16.dp)
-                        )
-                        Column {
-                            Text(text = "Haptic Feedback Disabled", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text(text = "Tap to enable system haptics.", style = MaterialTheme.typography.bodyMedium)
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning, 
+                                contentDescription = "Warning",
+                                modifier = Modifier.padding(end = 16.dp)
+                            )
+                            Column {
+                                Text(text = "Haptic Feedback Disabled", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text(text = "Tap to enable system haptics.", style = MaterialTheme.typography.bodyMedium)
+                            }
                         }
                     }
                 }
             }
 
-            Text(
-                text = "Action Cards",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            
-            val sortedCards = allCards.sortedWith(
-                compareBy<ActionCard> { !it.isSystem }
-                .thenBy { it.id }
-            )
-            
-            if (sortedCards.isEmpty()) {
+            item(key = "action_cards_title") {
                 Text(
-                    text = "No cards available.",
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = Color.Gray
+                    text = "Action Cards",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                 )
             }
             
-            Column {
-                sortedCards.forEach { card ->
+            if (actionCards.isEmpty()) {
+                item(key = "no_cards") {
+                    Text(
+                        text = "No cards available.",
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        color = Color.Gray
+                    )
+                }
+            } else {
+                items(actionCards, key = { "card_${it.id}" }) { card ->
                     ActionCardRow(
                         card = card, 
-                        onEdit = { cardToEdit = card },
+                        onEdit = { dialogState = SettingsDialogState.Edit(card) },
                         onDuplicate = { viewModel.duplicateActionCard(card) },
-                        onDelete = { cardToDelete = card }
+                        onDelete = { dialogState = SettingsDialogState.Delete(card) }
                     )
                 }
             }
             
-            Button(
-                onClick = { showAddCardDialog = true },
-                modifier = Modifier.fillMaxWidth().padding(16.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text("Create New Action Card")
+            item(key = "add_card_button") {
+                Button(
+                    onClick = { dialogState = SettingsDialogState.Add },
+                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Create New Action Card")
+                }
             }
             
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
-            
-            Text(
-                text = "General",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Sound Effects")
-                Switch(checked = soundEnabled, onCheckedChange = { viewModel.onSoundEnabledChanged(it) })
+            item(key = "general_header") {
+                Column {
+                    Divider(modifier = Modifier.padding(vertical = 16.dp))
+                    Text(
+                        text = "General",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text("Critical Hit/Miss Effects")
-                Switch(checked = critEffectsEnabled, onCheckedChange = { viewModel.onCritEffectsEnabledChanged(it) })
+
+            item(key = "sound_setting") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Sound Effects")
+                    Switch(checked = settingsState.soundEnabled, onCheckedChange = { viewModel.onSoundEnabledChanged(it) })
+                }
             }
-            
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
+
+            item(key = "crit_setting") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Critical Hit/Miss Effects")
+                    Switch(checked = settingsState.critEffectsEnabled, onCheckedChange = { viewModel.onCritEffectsEnabledChanged(it) })
+                }
+            }
             
             // --- Debug ---
-            if (debugModeEnabled) {
-                Text(
-                    text = "Debug Mode",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                )
-                Button(
-                    onClick = { viewModel.setDebugModeEnabled(false) },
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Disable Debug Mode")
+            if (settingsState.debugModeEnabled) {
+                item(key = "debug_header") {
+                    Column {
+                        Divider(modifier = Modifier.padding(vertical = 16.dp))
+                        Text(
+                            text = "Debug Mode",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                    }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Always Nat 20")
-                    Switch(checked = alwaysNat20, onCheckedChange = { viewModel.setAlwaysNat20(it) })
+                item(key = "debug_disable") {
+                    Button(
+                        onClick = { viewModel.setDebugModeEnabled(false) },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Disable Debug Mode")
+                    }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Always Nat 1")
-                    Switch(checked = alwaysNat1, onCheckedChange = { viewModel.setAlwaysNat1(it) })
+                item(key = "debug_nat20") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Always Nat 20")
+                        Switch(checked = settingsState.alwaysNat20, onCheckedChange = { viewModel.setAlwaysNat20(it) })
+                    }
+                }
+                item(key = "debug_nat1") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Always Nat 1")
+                        Switch(checked = settingsState.alwaysNat1, onCheckedChange = { viewModel.setAlwaysNat1(it) })
+                    }
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -387,6 +409,35 @@ fun ActionCardRow(card: ActionCard, onEdit: () -> Unit, onDuplicate: () -> Unit,
 
 data class UiComboStep(val id: Int, var name: String, var formula: String, var isAttack: Boolean, var threshold: String = "10")
 
+// Pure function to prepare steps list. Moves logic out of Composition.
+private fun prepareComboSteps(initialSteps: String): List<UiComboStep> {
+    val steps = mutableListOf<UiComboStep>()
+    
+    // Parse
+    if (initialSteps.isNotBlank()) {
+        val parsed = initialSteps.split("|").mapIndexedNotNull { index, s ->
+            val parts = s.split(";")
+            if (parts.size >= 3) {
+                val thresholdVal = if (parts.size >= 4) parts[3] else "10"
+                UiComboStep(index, parts[0], parts[1], parts[2].toBoolean(), thresholdVal)
+            } else null
+        }
+        steps.addAll(parsed)
+    }
+
+    // Ensure Defaults / Integrity
+    if (steps.isEmpty()) {
+        steps.add(UiComboStep(0, "Attack", "1d20+5", true, "10"))
+    }
+    if (steps.size < 2) {
+        val nextId = if (steps.isEmpty()) 0 else steps.maxOf { it.id } + 1
+        steps.add(UiComboStep(nextId, "Damage", "1d8+3", false))
+    }
+    
+    // Normalize IDs just in case
+    return steps.mapIndexed { i, s -> s.copy(id = i) }
+}
+
 @Composable
 fun ActionCardDialog(
     title: String,
@@ -402,40 +453,20 @@ fun ActionCardDialog(
 ) {
     var name by remember { mutableStateOf(initialName) }
     var formula by remember { mutableStateOf(initialFormula) }
-    var selectedVisual by remember { mutableStateOf(initialVisual) }
     var selectedType by remember { mutableStateOf(initialType) }
     
-    // Combo Steps State
-    val initialComboSteps = remember {
-        if (initialSteps.isNotBlank()) {
-            initialSteps.split("|").mapIndexedNotNull { index, s ->
-                val parts = s.split(";")
-                if (parts.size >= 3) {
-                    val thresholdVal = if (parts.size >= 4) parts[3] else "10"
-                    UiComboStep(index, parts[0], parts[1], parts[2].toBoolean(), thresholdVal)
-                } else null
-            }.toMutableStateList()
-        } else {
-            mutableStateListOf(UiComboStep(0, "Attack", "1d20+5", true, "10"), UiComboStep(1, "Damage", "1d8+3", false))
-        }
+    // Helper to determine initial visual safely
+    val defaultBase = if (initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) initialVisual else DiceType.D20
+    var selectedBaseDie by remember { 
+        mutableStateOf(if (initialType == ActionCardType.SIMPLE && initialVisual.faces > 0) initialVisual else defaultBase)
     }
     
-    // Ensure at least two steps if loading corrupted/empty data
-    LaunchedEffect(initialComboSteps.size) {
-        if (initialComboSteps.size < 2) {
-            if (initialComboSteps.isEmpty()) {
-                initialComboSteps.add(UiComboStep(0, "Attack", "1d20+5", true, "10"))
-            }
-            if (initialComboSteps.size < 2) {
-                initialComboSteps.add(UiComboStep(1, "Damage", "1d8+3", false))
-            }
-        }
-    }
+    // Initialize Visual (Icon) for Formula/Combo types
+    var selectedVisual by remember { mutableStateOf(initialVisual) }
     
-    // Base die for SIMPLE mode
-    var selectedBaseDie by remember { mutableStateOf(if (initialVisual.faces > 0 && initialVisual != DiceType.CUSTOM) initialVisual else DiceType.D20) }
-    LaunchedEffect(Unit) {
-        if (initialType == ActionCardType.SIMPLE && initialVisual.faces > 0) selectedBaseDie = initialVisual
+    // OPTIMIZED STATE: Use standard List + State, no SnapshotStateList
+    var comboSteps by remember(initialSteps) {
+        mutableStateOf(prepareComboSteps(initialSteps))
     }
     
     var validationError by remember { mutableStateOf<String?>(null) }
@@ -459,8 +490,9 @@ fun ActionCardDialog(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (stepIndexToDelete in initialComboSteps.indices) {
-                            initialComboSteps.removeAt(stepIndexToDelete)
+                        // IMMUTABLE UPDATE: filter out the index
+                        if (stepIndexToDelete in comboSteps.indices) {
+                            comboSteps = comboSteps.filterIndexed { index, _ -> index != stepIndexToDelete }
                         }
                         stepIndexToDelete = -1
                     }
@@ -540,7 +572,8 @@ fun ActionCardDialog(
                     }
                     ActionCardType.COMBO -> {
                         Text("Steps:", style = MaterialTheme.typography.labelLarge)
-                        initialComboSteps.forEachIndexed { index, step ->
+                        // Use standard forEachIndexed on the List
+                        comboSteps.forEachIndexed { index, step ->
                             val stepType = if (index == 0) "Attack" else "Damage"
                             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                                 Column(modifier = Modifier.padding(8.dp)) {
@@ -553,7 +586,8 @@ fun ActionCardDialog(
                                                 if (step.name.isNotBlank() || step.formula.isNotBlank()) {
                                                     stepIndexToDelete = index
                                                 } else {
-                                                    initialComboSteps.removeAt(index)
+                                                    // IMMUTABLE UPDATE: direct delete
+                                                    comboSteps = comboSteps.filterIndexed { i, _ -> i != index }
                                                 }
                                             }) {
                                                 Icon(Icons.Default.Close, contentDescription = "Remove")
@@ -561,11 +595,19 @@ fun ActionCardDialog(
                                         }
                                     }
                                     OutlinedTextField(
-                                        value = step.name, onValueChange = { initialComboSteps[index] = step.copy(name = it) },
+                                        value = step.name, 
+                                        onValueChange = { newName ->
+                                            // IMMUTABLE UPDATE: map and copy
+                                            comboSteps = comboSteps.mapIndexed { i, s -> if (i == index) s.copy(name = newName) else s }
+                                        },
                                         label = { Text("Step Name") }, modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
-                                        value = step.formula, onValueChange = { initialComboSteps[index] = step.copy(formula = it) },
+                                        value = step.formula, 
+                                        onValueChange = { newFormula ->
+                                            // IMMUTABLE UPDATE: map and copy
+                                            comboSteps = comboSteps.mapIndexed { i, s -> if (i == index) s.copy(formula = newFormula) else s }
+                                        },
                                         label = { Text("Formula") }, modifier = Modifier.fillMaxWidth()
                                     )
                                     
@@ -573,8 +615,10 @@ fun ActionCardDialog(
                                     if (index == 0) {
                                         OutlinedTextField(
                                             value = step.threshold, 
-                                            onValueChange = { 
-                                                if (it.all { char -> char.isDigit() }) initialComboSteps[index] = step.copy(threshold = it)
+                                            onValueChange = { newVal ->
+                                                if (newVal.all { char -> char.isDigit() }) {
+                                                    comboSteps = comboSteps.mapIndexed { i, s -> if (i == index) s.copy(threshold = newVal) else s }
+                                                }
                                             },
                                             label = { Text("Target AC") },
                                             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -585,7 +629,10 @@ fun ActionCardDialog(
                                 }
                             }
                         }
-                        Button(onClick = { initialComboSteps.add(UiComboStep(initialComboSteps.size, "", "", false)) }) {
+                        Button(onClick = { 
+                            // IMMUTABLE UPDATE: Add new item
+                            comboSteps = comboSteps + UiComboStep(comboSteps.size, "", "", false) 
+                        }) {
                             Icon(Icons.Default.Add, null); Spacer(Modifier.width(4.dp)); Text("Add Damage Step")
                         }
                         Text("Icon:", style = MaterialTheme.typography.labelLarge)
@@ -618,9 +665,9 @@ fun ActionCardDialog(
                             validationError = "Invalid formula"; showErrorDialog = true; return@Button
                         }
                     } else if (selectedType == ActionCardType.COMBO) {
-                        if (initialComboSteps.isEmpty()) { validationError = "At least one step required"; showErrorDialog = true; return@Button }
+                        if (comboSteps.isEmpty()) { validationError = "At least one step required"; showErrorDialog = true; return@Button }
                         val sb = StringBuilder()
-                        initialComboSteps.forEachIndexed { i, s ->
+                        comboSteps.forEachIndexed { i, s ->
                             if (s.name.isBlank() || s.formula.isBlank()) { validationError = "Step fields cannot be empty"; showErrorDialog = true; return@Button }
                             
                             // VALIDATION ADDED HERE

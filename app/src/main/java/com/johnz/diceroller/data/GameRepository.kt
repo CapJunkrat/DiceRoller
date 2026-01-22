@@ -84,18 +84,7 @@ class GameRepository(private val database: AppDatabase) {
 
     suspend fun initSystemCardsIfNeeded() {
         if (cardDao.getCount() == 0) {
-            // Seed system cards
-            // 1. D6
-            cardDao.insert(
-                ActionCard(
-                    name = "D6",
-                    formula = "1d6",
-                    visualType = DiceType.D6,
-                    isSystem = true,
-                    type = ActionCardType.SIMPLE
-                )
-            )
-            // 2. D20
+            // 1. D20 Basic Die
             cardDao.insert(
                 ActionCard(
                     name = "D20",
@@ -105,14 +94,28 @@ class GameRepository(private val database: AppDatabase) {
                     type = ActionCardType.SIMPLE
                 )
             )
-            // 3. Attack (1d20 + 1d4 + 2)
+
+            // 2. Simple Single Attack
             cardDao.insert(
                 ActionCard(
-                    name = "Attack",
-                    formula = "1d20+1d4+2",
-                    visualType = DiceType.D20, // Using D20 visual for attack
+                    name = "Quick Attack",
+                    formula = "1d20+5",
+                    visualType = DiceType.D20,
                     isSystem = true,
                     type = ActionCardType.FORMULA
+                )
+            )
+
+            // 3. Complex Combo (Attack + Damage)
+            // Format: Name;Formula;IsAttack;Threshold | Name;Formula;IsAttack;Threshold
+            cardDao.insert(
+                ActionCard(
+                    name = "Greatsword Combo",
+                    formula = "COMBO",
+                    visualType = DiceType.D20,
+                    isSystem = true,
+                    type = ActionCardType.COMBO,
+                    steps = "Attack;1d20+6;true;15|Damage;2d6+4;false;"
                 )
             )
         }

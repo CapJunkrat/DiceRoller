@@ -4,10 +4,8 @@ import android.app.Application
 import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.johnz.diceroller.BuildConfig
 import com.johnz.diceroller.DiceType
 import com.johnz.diceroller.data.DebugModeManager
-import com.johnz.diceroller.data.DiceStyle
 import com.johnz.diceroller.data.GameRepository
 import com.johnz.diceroller.data.SettingsRepository
 import com.johnz.diceroller.data.db.ActionCard
@@ -17,58 +15,69 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+data class GeneralSettingsState(
+    val isSystemHapticsEnabled: Boolean = true,
+    val debugModeEnabled: Boolean = false,
+    val alwaysNat20: Boolean = false,
+    val alwaysNat1: Boolean = false,
+    val soundEnabled: Boolean = true,
+    val critEffectsEnabled: Boolean = true
+)
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val settingsRepository = SettingsRepository(application)
     private val gameRepository = GameRepository(AppDatabase.getDatabase(application))
-
-    val diceStyle: StateFlow<DiceStyle> = settingsRepository.diceStyleFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = DiceStyle.CARTOON_25D
-        )
         
-    val allActionCards: StateFlow<List<ActionCard>> = gameRepository.allActionCards
+    private val _isSystemHapticsEnabled = MutableStateFlow(true)
+
+    // Separate Flow for Action Cards to isolate recompositions
+    val actionCardsState: StateFlow<List<ActionCard>> = gameRepository.allActionCards
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
-    
-    val isCustomDiceVisible: StateFlow<Boolean> = settingsRepository.customDiceVisibleFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = true
-        )
-        
-    private val _isSystemHapticsEnabled = MutableStateFlow(true)
-    val isSystemHapticsEnabled: StateFlow<Boolean> = _isSystemHapticsEnabled.asStateFlow()
 
-    // Debug / Cheat Flows from DebugModeManager
-    val debugModeEnabled: StateFlow<Boolean> = DebugModeManager.debugModeEnabled
-    val alwaysNat20: StateFlow<Boolean> = DebugModeManager.alwaysNat20
-    val alwaysNat1: StateFlow<Boolean> = DebugModeManager.alwaysNat1
-    
-    val soundEnabled: StateFlow<Boolean> = settingsRepository.soundEnabledFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = true
-        )
+    // Separate Flow for General/Debug Settings
+    private val debugStateFlow = combine(
+        DebugModeManager.debugModeEnabled,
+        DebugModeManager.alwaysNat20,
+        DebugModeManager.alwaysNat1
+    ) { debug, nat20, nat1 ->
+        Triple(debug, nat20, nat1)
+    }
 
-    val critEffectsEnabled: StateFlow<Boolean> = settingsRepository.critEffectsEnabledFlow
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = true
+    private val settingsStateFlow = combine(
+        settingsRepository.soundEnabledFlow,
+        settingsRepository.critEffectsEnabledFlow
+    ) { sound, crit ->
+        Pair(sound, crit)
+    }
+
+    val generalSettingsState: StateFlow<GeneralSettingsState> = combine(
+        _isSystemHapticsEnabled,
+        debugStateFlow,
+        settingsStateFlow
+    ) { haptics, debugState, settingsState ->
+        GeneralSettingsState(
+            isSystemHapticsEnabled = haptics,
+            debugModeEnabled = debugState.first,
+            alwaysNat20 = debugState.second,
+            alwaysNat1 = debugState.third,
+            soundEnabled = settingsState.first,
+            critEffectsEnabled = settingsState.second
         )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = GeneralSettingsState()
+    )
 
     init {
         checkSystemHapticsStatus()
@@ -87,18 +96,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 }
             }
             _isSystemHapticsEnabled.value = hapticEnabled
-        }
-    }
-
-    fun onCustomDiceVisibilityChanged(isVisible: Boolean) {
-        viewModelScope.launch {
-            settingsRepository.updateCustomDiceVisibility(isVisible)
-        }
-    }
-
-    fun onDiceStyleChanged(style: DiceStyle) {
-        viewModelScope.launch {
-            settingsRepository.updateDiceStyle(style)
         }
     }
 
@@ -140,7 +137,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             val existingNames = gameRepository.getAllCardNames().toSet()
             var newName = card.name
             
-            // Regex to check if name already ends with (N)
             val regex = Regex("^(.*) \\((\\d+)\\)$")
             val match = regex.find(newName)
             
@@ -151,14 +147,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 baseName = match.groupValues[1]
                 counter = match.groupValues[2].toInt() + 1
             }
-            
-            // Generate next available name
-            // If baseName doesn't exist, we could technically use it, but "duplicate" usually implies we want a copy.
-            // If the user is copying "Fireball", they get "Fireball (1)".
-            // If they copy "Fireball (1)", they get "Fireball (2)".
-            
-            // If the regex didn't match, we start trying "BaseName (1)".
-            // If it matched, we start with "BaseName (counter)".
             
             var potentialName = if (match == null) "$baseName ($counter)" else "$baseName ($counter)"
             
@@ -189,22 +177,15 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    // Debug Actions
     fun setDebugModeEnabled(enabled: Boolean) {
-        if (BuildConfig.DEBUG) {
-            DebugModeManager.setDebugModeEnabled(enabled)
-        }
+        DebugModeManager.setDebugModeEnabled(enabled)
     }
 
     fun setAlwaysNat20(enabled: Boolean) {
-        if (BuildConfig.DEBUG) {
-            DebugModeManager.setAlwaysNat20(enabled)
-        }
+        DebugModeManager.setAlwaysNat20(enabled)
     }
 
     fun setAlwaysNat1(enabled: Boolean) {
-        if (BuildConfig.DEBUG) {
-            DebugModeManager.setAlwaysNat1(enabled)
-        }
+        DebugModeManager.setAlwaysNat1(enabled)
     }
 }
